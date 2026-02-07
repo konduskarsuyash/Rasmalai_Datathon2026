@@ -419,6 +419,26 @@ const NetworkCanvas = ({
       ctx.textAlign = "center";
       ctx.fillText(inst.name, x, labelY);
 
+      // Display market price and investment info if available
+      if (inst.price !== undefined && inst.total_invested !== undefined) {
+        const priceY = labelY + 22;
+        const investY = labelY + 38;
+        
+        // Price info
+        ctx.font = "bold 11px system-ui";
+        const priceText = `$${inst.price.toFixed(2)}`;
+        const priceReturn = inst.return !== undefined ? inst.return : 0;
+        const returnColor = priceReturn >= 0 ? "#10b981" : "#ef4444";
+        const returnText = `${priceReturn >= 0 ? '+' : ''}${(priceReturn * 100).toFixed(1)}%`;
+        
+        ctx.fillStyle = "#374151";
+        ctx.fillText(priceText, x, priceY);
+        
+        ctx.fillStyle = returnColor;
+        ctx.font = "10px system-ui";
+        ctx.fillText(returnText, x, investY);
+      }
+
       // Market indicator
       ctx.fillStyle = "#a855f7";
       ctx.shadowBlur = 8;

@@ -105,7 +105,7 @@ const LiveActivityFeed = ({ transactions, currentStep }) => {
                     T{tx.step}
                   </span>
                 </div>
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center mb-1">
                   <span className={`text-xs ${style.text}`}>
                     {style.label} → {target}
                   </span>
@@ -113,6 +113,18 @@ const LiveActivityFeed = ({ transactions, currentStep }) => {
                     ${tx.amount.toFixed(1)}M
                   </span>
                 </div>
+                {/* Show cash impact */}
+                {tx.cash_change !== undefined && (
+                  <div className="text-xs mt-1 pt-1 border-t border-gray-300 flex justify-between items-center">
+                    <span className="text-gray-600">Cash:</span>
+                    <span className={`font-semibold ${tx.cash_change < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      ${tx.cash_before?.toFixed(1)}M → ${tx.cash_after?.toFixed(1)}M 
+                      <span className="ml-1">
+                        ({tx.cash_change >= 0 ? '+' : ''}{tx.cash_change.toFixed(1)}M)
+                      </span>
+                    </span>
+                  </div>
+                )}
               </div>
             );
           })

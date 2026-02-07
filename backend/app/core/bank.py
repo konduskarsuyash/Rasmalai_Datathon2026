@@ -117,6 +117,12 @@ class Bank:
             current_position = self.balance_sheet.investment_positions.get(market_id, 0)
             divest_amount = min(amount, current_position)
             if divest_amount > 0:
+                # Get market for calculating realized returns
+                from ..core.market import Market
+                market = None
+                # This will be passed from the simulation context
+                # For now, divest at book value (will be enhanced in execute_action call)
+                
                 self.balance_sheet.cash += divest_amount
                 self.balance_sheet.investments -= divest_amount
                 self.balance_sheet.investment_positions[market_id] -= divest_amount

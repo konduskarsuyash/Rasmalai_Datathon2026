@@ -14,10 +14,10 @@ from app.ml.policy import select_action
 
 @dataclass
 class BankConfig:
-    """Simplified configuration for individual bank initialization."""
+    """Configuration for individual bank initialization with dynamic amounts."""
     initial_capital: float = 100.0
     target_leverage: float = 3.0
-    risk_factor: float = 0.2
+    risk_factor: float = 0.3  # 0.0 (conservative) to 1.0 (aggressive)
 
 
 @dataclass
@@ -83,16 +83,33 @@ def run_simulation_v2(config: SimulationConfig, featherless_fn: Optional[Callabl
             counterparty_id = _select_counterparty(bank, state.banks, action)
             market_id = random.choice(["BANK_INDEX", "FIN_SERVICES"])
             
-            # Get per-bank amounts if available, otherwise use defaults
-            if config.bank_configs and bank_idx < len(config.bank_configs):
-                bank_config = config.bank_configs[bank_idx]
-                lending_amt = bank_config.lending_amount
-                investment_amt = bank_config.investment_amount
-            else:
-                lending_amt = config.lending_amount
-                investment_amt = config.investment_amount
+            # Calculate dynamic transaction amounts based on bank characteristics
+            ratios = bank.balance_sheet.compute_ratios()
+            cash = bank.balance_sheet.cash
+            equity = bank.balance_sheet.equity
             
-            amount = lending_amt if "LENDING" in action.value else investment_amt
+            # Base amount scales with bank size (5-15% of cash)
+            base_pct = 0.08 + (observation.get('leverage_gap', 0) * 0.02)
+            
+            # Risk factor influences transaction size
+            risk_multiplier = 1.0
+            if config.bank_configs and bank_idx < len(config.bank_configs):
+                risk_factor = config.bank_configs[bank_idx].risk_factor
+                risk_multiplier = 0.7 + (risk_factor * 0.8)  # 0.7x to 1.5x
+            
+            # Calculate amount based on action type
+            if action in [BankAction.INVEST_MARKET, BankAction.DIVEST_MARKET]:
+                amount = cash * base_pct * risk_multiplier * 1.2
+            elif action == BankAction.INCREASE_LENDING:
+                amount = cash * base_pct * risk_multiplier * 1.4
+            elif action == BankAction.DECREASE_LENDING:
+                amount = cash * base_pct * 0.6
+            else:
+                amount = cash * 0.02
+            
+            # Clamp to reasonable bounds (5M to 50M)
+            amount = max(5.0, min(50.0, amount))
+            amount = min(amount, equity * 0.3)
             
             bank.execute_action(
                 action=action,
@@ -165,10 +182,21 @@ def run_simulation_v2(config: SimulationConfig, featherless_fn: Optional[Callabl
 
 def _create_interbank_network(banks: List[Bank], connection_density: float = 0.2):
     num_banks = len(banks)
+    
+    # Can't create interbank network with only 1 bank
+    if num_banks < 2:
+        return
+    
     num_connections = int(num_banks * (num_banks - 1) * connection_density / 2)
     for _ in range(num_connections):
         lender = random.choice(banks)
-        borrower = random.choice([b for b in banks if b.bank_id != lender.bank_id])
+        potential_borrowers = [b for b in banks if b.bank_id != lender.bank_id]
+        
+        # Safety check (shouldn't happen with num_banks >= 2, but just in case)
+        if not potential_borrowers:
+            continue
+            
+        borrower = random.choice(potential_borrowers)
         amount = random.uniform(5, 15)
         if lender.balance_sheet.cash >= amount:
             lender.balance_sheet.cash -= amount

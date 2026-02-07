@@ -3,6 +3,7 @@ Market Nodes for Financial Network MVP v2.
 """
 from dataclasses import dataclass, field
 from typing import Dict, List
+import random
 
 
 @dataclass
@@ -13,14 +14,31 @@ class Market:
     total_invested: float = 0.0
     price_history: List[float] = field(default_factory=list)
     flow_history: List[float] = field(default_factory=list)
-    price_sensitivity: float = 0.001
+    price_sensitivity: float = 0.002  # Increased from 0.001 for more volatility
+    volatility: float = 0.03  # 3% random volatility per step
 
     def __post_init__(self):
         self.price = self.initial_price
         self.price_history = [self.price]
 
     def apply_flow(self, net_flow: float):
-        price_change = net_flow * self.price_sensitivity
+        """Apply supply/demand dynamics + random market fluctuations."""
+        # Supply/demand impact: positive flow (investment) increases price, negative (divestment) decreases
+        supply_demand_impact = net_flow * self.price_sensitivity
+        
+        # Random market volatility (-3% to +3%)
+        random_shock = random.uniform(-self.volatility, self.volatility) * self.price
+        
+        # Momentum effect: if price has been rising, add small upward bias
+        momentum = 0.0
+        if len(self.price_history) >= 3:
+            recent_change = self.price_history[-1] - self.price_history[-3]
+            momentum = recent_change * 0.1  # 10% of recent trend
+        
+        # Total price change
+        price_change = supply_demand_impact + random_shock + momentum
+        
+        # Update price (floor at 1.0, can go very high)
         self.price = max(1.0, self.price + price_change)
         self.total_invested += net_flow
         self.flow_history.append(net_flow)

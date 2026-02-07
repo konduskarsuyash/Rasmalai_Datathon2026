@@ -25,7 +25,7 @@ ACTIVE_SIMULATION = {
 
 class SimulationCommand(BaseModel):
     """Command to control running simulation."""
-    command: str = Field(..., description="Command: pause, resume, stop, delete_bank, add_capital")
+    command: str = Field(..., description="Command: pause, resume, stop, delete_bank, add_capital, financial_crisis")
     bank_id: Optional[int] = Field(None, description="Bank ID for bank-specific commands")
     amount: Optional[float] = Field(None, description="Amount for add_capital command")
 
@@ -148,6 +148,9 @@ async def interactive_simulation_generator(config: SimulationConfig, control_que
         await asyncio.sleep(0.8)
         
         # Process each bank
+        # Track market flows this step for price updates
+        step_market_flows = {"BANK_INDEX": 0.0, "FIN_SERVICES": 0.0}
+        
         for bank_idx, bank in enumerate(state.banks):
             if bank.is_defaulted:
                 continue
@@ -166,13 +169,80 @@ async def interactive_simulation_generator(config: SimulationConfig, control_que
             counterparty_id = _select_counterparty(bank, state.banks, action)
             market_id = random.choice(["BANK_INDEX", "FIN_SERVICES"])
             
-            # Dynamic amounts based on bank strategy
-            if config.bank_configs and bank_idx < len(config.bank_configs):
-                base_amount = 15.0
-            else:
-                base_amount = 10.0
+            # Fix: If lending action but no valid counterparty (e.g., only 1 bank), switch to market action
+            if action in [BankAction.INCREASE_LENDING, BankAction.DECREASE_LENDING] and counterparty_id is None:
+                # Check if there are any other non-defaulted banks
+                other_banks = [b for b in state.banks if b.bank_id != bank.bank_id and not b.is_defaulted]
+                
+                if len(other_banks) == 0:
+                    # Only bank in the system or all others defaulted - can't do interbank lending
+                    # Switch to market investment instead
+                    action = BankAction.INVEST_MARKET if bank.balance_sheet.cash > 30 else BankAction.HOARD_CASH
+                    reason = f"No lending counterparties available - switching to {action.value}"
+                    counterparty_id = None
+                    print(f"[SOLO BANK FIX] Bank {bank.bank_id}: No counterparties, action changed to {action.value}")
             
-            amount = base_amount
+            # Calculate dynamic transaction amounts using game theory principles
+            ratios = bank.balance_sheet.compute_ratios()
+            cash = bank.balance_sheet.cash
+            equity = bank.balance_sheet.equity
+            
+            # Base amount with significant randomness (5-20% of cash)
+            base_pct = random.uniform(0.05, 0.20)
+            
+            # Game theory: adapt to network state
+            # More neighbors defaulted = more cautious (smaller amounts)
+            caution_factor = 1.0 - (neighbor_defaults * 0.15)  # Reduce by 15% per defaulted neighbor
+            caution_factor = max(0.3, caution_factor)
+            
+            # Risk factor from config influences transaction size
+            risk_multiplier = 1.0
+            if config.bank_configs and bank_idx < len(config.bank_configs):
+                risk_factor = config.bank_configs[bank_idx].risk_factor
+                # Higher risk = larger transactions (0.5x to 2.0x for more variance)
+                risk_multiplier = 0.5 + (risk_factor * 1.5)
+            
+            # Add strategic randomness based on market conditions
+            market_sentiment = random.uniform(0.7, 1.3)  # 70% to 130% of base
+            
+            # Calculate amount based on action type with game theory
+            if action == BankAction.INVEST_MARKET:
+                # Market investments: aggressive when others are cautious (contrarian)
+                amount = cash * base_pct * risk_multiplier * market_sentiment * 1.5
+            elif action == BankAction.DIVEST_MARKET:
+                # Divesting: larger amounts when stressed (need liquidity)
+                stress_multiplier = 2.0 if observation.get('liquidity_ratio', 1.0) < 0.25 else 1.0
+                amount = cash * base_pct * stress_multiplier * 1.2
+            elif action == BankAction.INCREASE_LENDING:
+                # Lending: cautious in stressed environment
+                amount = cash * base_pct * risk_multiplier * caution_factor * 1.3
+            elif action == BankAction.DECREASE_LENDING:
+                # Deleveraging: variable based on urgency
+                urgency = 2.0 if observation.get('leverage', 1.0) > 3.0 else 1.0
+                amount = cash * base_pct * urgency * 0.8
+            else:
+                # HOARD_CASH or other: minimal but still variable
+                amount = cash * random.uniform(0.01, 0.05)
+            
+            # Add final random jitter (±20%)
+            jitter = random.uniform(0.8, 1.2)
+            amount = amount * jitter
+            
+            # Clamp to reasonable bounds (3M to 80M for more range)
+            amount = max(3.0, min(80.0, amount))
+            
+            # Further limit by equity size to prevent over-extension
+            amount = min(amount, equity * 0.4)
+            
+            # Log dynamic amount calculation for debugging
+            if bank_idx < 3 and t == 0:  # Log first 3 banks on first step
+                print(f"[DYNAMIC AMOUNT] Bank {bank.bank_id}: action={action.value}, "
+                      f"cash=${cash:.1f}M, equity=${equity:.1f}M, risk_mult={risk_multiplier:.2f}, "
+                      f"amount=${amount:.1f}M")
+            
+            # Track cash before action for logging
+            cash_before = bank.balance_sheet.cash
+            investments_before = bank.balance_sheet.investments
             
             # Execute action
             bank.execute_action(
@@ -184,6 +254,50 @@ async def interactive_simulation_generator(config: SimulationConfig, control_que
                 reason=reason,
             )
             
+            # Log cash changes for first 3 banks on first 2 steps
+            if bank_idx < 3 and t < 2:
+                cash_after = bank.balance_sheet.cash
+                cash_change = cash_after - cash_before
+                investments_after = bank.balance_sheet.investments
+                inv_change = investments_after - investments_before
+                print(f"[CASH FLOW] Step {t} Bank {bank.bank_id}: {action.value} ${amount:.1f}M")
+                print(f"  Cash: ${cash_before:.1f}M → ${cash_after:.1f}M (change: ${cash_change:+.1f}M)")
+                print(f"  Investments: ${investments_before:.1f}M → ${investments_after:.1f}M (change: ${inv_change:+.1f}M)")
+            
+            # Track market flows for price updates
+            if action == BankAction.INVEST_MARKET and market_id in step_market_flows:
+                step_market_flows[market_id] += amount  # Positive flow (buying)
+            elif action == BankAction.DIVEST_MARKET and market_id in step_market_flows:
+                step_market_flows[market_id] -= amount  # Negative flow (selling)
+            
+            # Special handling for DIVEST_MARKET: realize gains/losses based on market price
+            market_gain = 0.0
+            if action == BankAction.DIVEST_MARKET and market_id in state.markets.markets:
+                market = state.markets.markets[market_id]
+                market_return = market.get_return()
+                
+                # Calculate realized gain/loss on the divested amount
+                market_gain = amount * market_return
+                
+                # Add gain/loss to bank's cash (this is in addition to getting principal back)
+                bank.balance_sheet.cash += market_gain
+                
+                # Update equity directly with the gain/loss
+                # (equity = assets - liabilities, cash is an asset)
+                
+                if abs(market_gain) > 0.5:
+                    gain_event = {
+                        "type": "market_gain",
+                        "step": t,
+                        "bank_id": bank.bank_id,
+                        "market_id": market_id,
+                        "divested_amount": round(amount, 2),
+                        "market_return": round(market_return * 100, 2),
+                        "realized_gain": round(market_gain, 2),
+                        "new_cash": round(bank.balance_sheet.cash, 2),
+                    }
+                    yield f"data: {json.dumps(gain_event)}\n\n"
+            
             # Send transaction event
             transaction_event = {
                 "type": "transaction",
@@ -194,6 +308,9 @@ async def interactive_simulation_generator(config: SimulationConfig, control_que
                 "action": action.value,
                 "amount": amount,
                 "reason": reason,
+                "cash_before": round(cash_before, 2),
+                "cash_after": round(bank.balance_sheet.cash, 2),
+                "cash_change": round(bank.balance_sheet.cash - cash_before, 2),
             }
             yield f"data: {json.dumps(transaction_event)}\n\n"
             await asyncio.sleep(0.4)
@@ -288,6 +405,31 @@ async def interactive_simulation_generator(config: SimulationConfig, control_que
                     "cascade_count": cascade_count,
                 }
                 yield f"data: {json.dumps(cascade_event)}\n\n"
+        
+        # Apply market flows: aggregate all investment/divestment activity and update prices
+        # Use the tracked flows from this step
+        for market_id, market in state.markets.markets.items():
+            # Get net flow from all banks' actions this step
+            net_flow = step_market_flows.get(market_id, 0.0)
+            
+            # Apply the flow (this includes supply/demand impact + random volatility + momentum)
+            market.apply_flow(net_flow)
+            
+            # Log significant price movements
+            if len(market.price_history) >= 2:
+                price_change = market.price_history[-1] - market.price_history[-2]
+                price_change_pct = (price_change / market.price_history[-2]) * 100
+                
+                if abs(price_change_pct) > 2.0:  # Log if price moved more than 2%
+                    price_move_event = {
+                        "type": "market_movement",
+                        "step": t,
+                        "market_id": market_id,
+                        "old_price": round(market.price_history[-2], 2),
+                        "new_price": round(market.price, 2),
+                        "change_pct": round(price_change_pct, 2),
+                    }
+                    yield f"data: {json.dumps(price_move_event)}\n\n"
         
         # Send step summary
         total_defaults = sum(1 for b in state.banks if b.is_defaulted)

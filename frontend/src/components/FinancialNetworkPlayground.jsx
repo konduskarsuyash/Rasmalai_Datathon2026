@@ -100,6 +100,29 @@ const FinancialNetworkPlayground = () => {
       }
     : metrics;
 
+  // Update market nodes with real-time data from simulation
+  useEffect(() => {
+    if (historicalData.length > 0) {
+      const latestData = historicalData[historicalData.length - 1];
+      if (latestData.market_states) {
+        setInstitutions(prev => prev.map(inst => {
+          if (inst.type === 'market' || inst.isMarket) {
+            const marketState = latestData.market_states.find(m => m.market_id === inst.id);
+            if (marketState) {
+              return {
+                ...inst,
+                price: marketState.price,
+                total_invested: marketState.total_invested,
+                return: marketState.return,
+              };
+            }
+          }
+          return inst;
+        }));
+      }
+    }
+  }, [historicalData]);
+
   // Alerts and events
   const [alerts, setAlerts] = useState([]);
 
@@ -376,7 +399,52 @@ const FinancialNetworkPlayground = () => {
       setAllTransactions([]);
       setCurrentSimulationStep(0);
       setIsSimulationRunning(true);
+      
+      // Store initial state with market data
+      if (event.markets && event.markets.length > 0) {
+        const initialState = {
+          step: 0,
+          total_defaults: 0,
+          total_equity: event.banks?.reduce((sum, b) => sum + b.capital, 0) || 0,
+          bank_states: event.banks?.map(b => ({
+            bank_id: b.id,
+            name: b.name,
+            capital: b.capital,
+            cash: b.cash,
+            is_defaulted: b.is_defaulted || false,
+          })) || [],
+          market_states: event.markets.map(m => ({
+            market_id: m.id,
+            name: m.name,
+            price: m.price || 100,
+            total_invested: m.total_invested || 0,
+            return: 0,
+          })),
+        };
+        setHistoricalData([initialState]);
+        console.log('[FinancialNetworkPlayground] Stored initial state with', event.markets.length, 'markets');
+      }
+      
       console.log('[FinancialNetworkPlayground] Simulation initialized');
+    } else if (event.type === 'restart') {
+      // Reset all simulation state
+      setHistoricalData([]);
+      setAllTransactions([]);
+      setCurrentSimulationStep(0);
+      setIsSimulationRunning(false);
+      setActiveTransactions([]);
+      setRealtimeConnections([]);
+      setActiveDashboard(null);
+      console.log('[FinancialNetworkPlayground] Simulation restarted');
+    } else if (event.type === 'financial_crisis') {
+      // Show crisis alert
+      addAlert({
+        type: "critical",
+        institution: "GLOBAL MARKETS",
+        message: "💥 FINANCIAL CRISIS! Markets crashed 50%, banks facing liquidity crisis",
+        severity: "high",
+      });
+      console.log('[FinancialNetworkPlayground] Financial crisis triggered');
     } else if (event.type === 'step_start') {
       // Update current step
       setCurrentSimulationStep(event.step);
@@ -395,6 +463,11 @@ const FinancialNetworkPlayground = () => {
           reason: event.reason,
         },
       ]);
+      
+      // Log varying amounts to show dynamic behavior
+      if (event.step < 2) {
+        console.log(`[Transaction] Bank ${event.from_bank}: ${event.action} $${event.amount.toFixed(1)}M`);
+      }
       
       // Determine target based on action type
       let targetId = null;
@@ -506,6 +579,31 @@ const FinancialNetworkPlayground = () => {
         console.log('[FinancialNetworkPlayground] Historical data updated, total steps:', updated.length);
         return updated;
       });
+    } else if (event.type === 'market_gain') {
+      // Bank realized gain/loss from market divestment
+      const gainLoss = event.realized_gain >= 0 ? 'gain' : 'loss';
+      const absGain = Math.abs(event.realized_gain);
+      
+      addAlert({
+        type: event.realized_gain >= 0 ? "success" : "warning",
+        institution: `Bank ${event.bank_id}`,
+        message: `Realized ${event.realized_gain >= 0 ? '📈' : '📉'} $${absGain.toFixed(1)}M ${gainLoss} (${event.market_return.toFixed(1)}% return) from ${event.market_id}`,
+        severity: absGain > 10 ? "high" : "medium",
+      });
+      
+      console.log(`[Market Gain] Bank ${event.bank_id}: $${event.realized_gain.toFixed(1)}M ${gainLoss} from ${event.market_id}`);
+    } else if (event.type === 'market_movement') {
+      // Market price fluctuation
+      const direction = event.change_pct >= 0 ? '⬆️' : '⬇️';
+      
+      addAlert({
+        type: event.change_pct >= 0 ? "success" : "warning",
+        institution: event.market_id,
+        message: `${direction} Price moved ${event.change_pct >= 0 ? '+' : ''}${event.change_pct.toFixed(1)}%: $${event.old_price} → $${event.new_price}`,
+        severity: Math.abs(event.change_pct) > 5 ? "high" : "medium",
+      });
+      
+      console.log(`[Market Movement] ${event.market_id}: ${event.change_pct.toFixed(1)}% ($${event.old_price} → $${event.new_price})`);
     } else if (event.type === 'complete') {
       setIsSimulationRunning(false);
       console.log('[FinancialNetworkPlayground] Simulation completed');

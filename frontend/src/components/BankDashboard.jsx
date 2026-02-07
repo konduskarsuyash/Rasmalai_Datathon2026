@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react';
 
 const BankDashboard = ({ bank, historicalData, transactions, onClose }) => {
   const canvasRef = useRef(null);
+  const balanceSheetCanvasRef = useRef(null);
   
   // Debug logging
   console.log('BankDashboard opened for:', bank.name, 'ID:', bank.id);
@@ -178,6 +179,145 @@ const BankDashboard = ({ bank, historicalData, transactions, onClose }) => {
     
   }, [capitalHistory, historicalData]);
   
+  // Draw balance sheet composition chart (stacked area showing asset breakdown)
+  useEffect(() => {
+    if (!balanceSheetCanvasRef.current || capitalHistory.length === 0) return;
+    
+    const canvas = balanceSheetCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    
+    // Clear canvas
+    ctx.fillStyle = '#f9fafb';
+    ctx.fillRect(0, 0, width, height);
+    
+    const padding = 40;
+    const chartWidth = width - 2 * padding;
+    const chartHeight = height - 2 * padding;
+    
+    // Calculate max total assets for scaling
+    const maxTotal = Math.max(...capitalHistory.map(d => 
+      (d.cash || 0) + (d.investments || 0) + (d.loans_given || 0)
+    ), 1);
+    
+    const xScale = chartWidth / Math.max(capitalHistory.length - 1, 1);
+    const yScale = chartHeight / maxTotal;
+    
+    // Draw grid lines
+    ctx.strokeStyle = '#e5e7eb';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 5; i++) {
+      const y = padding + (chartHeight * i) / 5;
+      ctx.beginPath();
+      ctx.moveTo(padding, y);
+      ctx.lineTo(width - padding, y);
+      ctx.stroke();
+      
+      // Y-axis labels
+      const value = maxTotal - (maxTotal * i) / 5;
+      ctx.fillStyle = '#6b7280';
+      ctx.font = '10px system-ui';
+      ctx.textAlign = 'right';
+      ctx.fillText(`$${value.toFixed(0)}M`, padding - 5, y + 3);
+    }
+    
+    // Draw stacked areas (loans_given + investments + cash)
+    // 1. Loans (bottom layer)
+    ctx.fillStyle = 'rgba(251, 146, 60, 0.5)'; // Orange
+    ctx.beginPath();
+    ctx.moveTo(padding, padding + chartHeight);
+    capitalHistory.forEach((point, i) => {
+      const x = padding + i * xScale;
+      const loansHeight = (point.loans_given || 0) * yScale;
+      const y = padding + chartHeight - loansHeight;
+      ctx.lineTo(x, y);
+    });
+    ctx.lineTo(padding + (capitalHistory.length - 1) * xScale, padding + chartHeight);
+    ctx.closePath();
+    ctx.fill();
+    
+    // 2. Investments (middle layer)
+    ctx.fillStyle = 'rgba(168, 85, 247, 0.5)'; // Purple
+    ctx.beginPath();
+    ctx.moveTo(padding, padding + chartHeight);
+    capitalHistory.forEach((point, i) => {
+      const x = padding + i * xScale;
+      const loansHeight = (point.loans_given || 0) * yScale;
+      const investmentsHeight = loansHeight + ((point.investments || 0) * yScale);
+      const y = padding + chartHeight - investmentsHeight;
+      ctx.lineTo(x, y);
+    });
+    // Draw back to baseline through loans
+    for (let i = capitalHistory.length - 1; i >= 0; i--) {
+      const x = padding + i * xScale;
+      const loansHeight = (capitalHistory[i].loans_given || 0) * yScale;
+      const y = padding + chartHeight - loansHeight;
+      ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    
+    // 3. Cash (top layer)
+    ctx.fillStyle = 'rgba(34, 197, 94, 0.5)'; // Green
+    ctx.beginPath();
+    ctx.moveTo(padding, padding + chartHeight);
+    capitalHistory.forEach((point, i) => {
+      const x = padding + i * xScale;
+      const totalHeight = ((point.loans_given || 0) + (point.investments || 0) + (point.cash || 0)) * yScale;
+      const y = padding + chartHeight - totalHeight;
+      ctx.lineTo(x, y);
+    });
+    // Draw back to baseline through investments and loans
+    for (let i = capitalHistory.length - 1; i >= 0; i--) {
+      const x = padding + i * xScale;
+      const loansInvestHeight = ((capitalHistory[i].loans_given || 0) + (capitalHistory[i].investments || 0)) * yScale;
+      const y = padding + chartHeight - loansInvestHeight;
+      ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    
+    // Draw X-axis labels
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '10px system-ui';
+    ctx.textAlign = 'center';
+    const labelInterval = Math.ceil(capitalHistory.length / 10);
+    capitalHistory.forEach((point, i) => {
+      if (i % labelInterval === 0 || i === capitalHistory.length - 1) {
+        const x = padding + i * xScale;
+        ctx.fillText(`T${point.step}`, x, height - padding + 15);
+      }
+    });
+    
+    // Chart title
+    ctx.fillStyle = '#111827';
+    ctx.font = 'bold 14px system-ui';
+    ctx.textAlign = 'left';
+    ctx.fillText('Asset Composition Over Time', padding, 25);
+    
+    // Legend
+    ctx.font = '11px system-ui';
+    const legendY = 25;
+    
+    ctx.fillStyle = 'rgba(34, 197, 94, 0.7)';
+    ctx.fillRect(width - 200, legendY - 10, 15, 15);
+    ctx.fillStyle = '#111827';
+    ctx.textAlign = 'left';
+    ctx.fillText('Cash', width - 180, legendY);
+    
+    ctx.fillStyle = 'rgba(168, 85, 247, 0.7)';
+    ctx.fillRect(width - 120, legendY - 10, 15, 15);
+    ctx.fillStyle = '#111827';
+    ctx.fillText('Investments', width - 100, legendY);
+    
+    ctx.fillStyle = 'rgba(251, 146, 60, 0.7)';
+    ctx.fillRect(width - 320, legendY - 10, 15, 15);
+    ctx.fillStyle = '#111827';
+    ctx.fillText('Loans Given', width - 300, legendY);
+    
+  }, [capitalHistory]);
+  
   // Calculate lending/borrowing stats
   const lentAmount = bankTransactions
     .filter(tx => tx.from_bank === bankNumericId && tx.action === 'INCREASE_LENDING')
@@ -221,20 +361,55 @@ const BankDashboard = ({ bank, historicalData, transactions, onClose }) => {
           {/* Key Metrics Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
-              <p className="text-xs text-blue-600 font-semibold mb-1">💰 Current Capital</p>
+              <p className="text-xs text-blue-600 font-semibold mb-1">💰 Equity (Capital)</p>
               <p className="text-2xl font-bold text-blue-900">${currentState.capital?.toFixed(1) || 0}M</p>
+              <p className="text-xs text-blue-600 mt-1">Assets - Liabilities</p>
             </div>
             <div className="bg-green-50 border-2 border-green-200 rounded-lg p-4">
-              <p className="text-xs text-green-600 font-semibold mb-1">💵 Cash Reserves</p>
+              <p className="text-xs text-green-600 font-semibold mb-1">💵 Cash</p>
               <p className="text-2xl font-bold text-green-900">${currentState.cash?.toFixed(1) || 0}M</p>
+              <p className="text-xs text-green-600 mt-1">Liquid reserves</p>
             </div>
             <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-4">
               <p className="text-xs text-purple-600 font-semibold mb-1">📊 Investments</p>
               <p className="text-2xl font-bold text-purple-900">${currentState.investments?.toFixed(1) || 0}M</p>
+              <p className="text-xs text-purple-600 mt-1">Market exposure</p>
             </div>
             <div className="bg-orange-50 border-2 border-orange-200 rounded-lg p-4">
-              <p className="text-xs text-orange-600 font-semibold mb-1">⚖️ Leverage</p>
-              <p className="text-2xl font-bold text-orange-900">{currentState.leverage?.toFixed(2) || 0}x</p>
+              <p className="text-xs text-orange-600 font-semibold mb-1">🏦 Loans Given</p>
+              <p className="text-2xl font-bold text-orange-900">${currentState.loans_given?.toFixed(1) || 0}M</p>
+              <p className="text-xs text-orange-600 mt-1">Lending portfolio</p>
+            </div>
+          </div>
+          
+          {/* Additional Balance Sheet Metrics */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4">
+              <p className="text-xs text-red-600 font-semibold mb-1">💳 Debt</p>
+              <p className="text-2xl font-bold text-red-900">${currentState.borrowed?.toFixed(1) || 0}M</p>
+              <p className="text-xs text-red-600 mt-1">Borrowed funds</p>
+            </div>
+            <div className="bg-indigo-50 border-2 border-indigo-200 rounded-lg p-4">
+              <p className="text-xs text-indigo-600 font-semibold mb-1">📈 Total Assets</p>
+              <p className="text-2xl font-bold text-indigo-900">
+                ${((currentState.cash || 0) + (currentState.investments || 0) + (currentState.loans_given || 0)).toFixed(1)}M
+              </p>
+              <p className="text-xs text-indigo-600 mt-1">Cash + Investments + Loans</p>
+            </div>
+            <div className="bg-amber-50 border-2 border-amber-200 rounded-lg p-4">
+              <p className="text-xs text-amber-600 font-semibold mb-1">⚖️ Leverage</p>
+              <p className="text-2xl font-bold text-amber-900">{currentState.leverage?.toFixed(2) || 0}x</p>
+              <p className="text-xs text-amber-600 mt-1">Assets / Equity</p>
+            </div>
+          </div>
+          
+          <div className="bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-xl p-4">
+            <h3 className="text-sm font-bold text-gray-700 mb-2">📚 Understanding the Balance Sheet:</h3>
+            <div className="text-xs text-gray-600 space-y-1">
+              <p>• <strong>Equity (Capital)</strong> = Total Assets - Total Liabilities</p>
+              <p>• When you <strong>lend or invest</strong>, cash decreases but loans/investments increase → <strong>equity stays the same</strong> (just converting one asset to another)</p>
+              <p>• Equity only changes when: you earn returns, suffer losses, take on debt, or default on obligations</p>
+              <p>• Watch the <strong>Asset Composition chart</strong> below to see how your cash converts to other assets!</p>
             </div>
           </div>
           
@@ -248,22 +423,74 @@ const BankDashboard = ({ bank, historicalData, transactions, onClose }) => {
             />
           </div>
           
+          {/* Balance Sheet Composition Chart */}
+          {capitalHistory.length > 0 && (
+            <div className="bg-white border-2 border-gray-200 rounded-xl p-4">
+              <canvas
+                ref={balanceSheetCanvasRef}
+                width={800}
+                height={250}
+                className="w-full"
+              />
+              <p className="text-xs text-gray-500 text-center mt-2">
+                💡 This shows how your assets are allocated. When you lend or invest, cash converts to other assets.
+              </p>
+            </div>
+          )}
+          
           {/* Transaction Summary */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-300 rounded-lg p-4">
-              <p className="text-sm text-green-700 font-bold mb-2">🏦 Total Lent</p>
-              <p className="text-3xl font-bold text-green-900">${lentAmount.toFixed(1)}M</p>
-              <p className="text-xs text-green-600 mt-1">{bankTransactions.filter(tx => tx.from_bank === bankNumericId && tx.action === 'INCREASE_LENDING').length} transactions</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Interbank Lending Section */}
+            <div className="bg-gradient-to-br from-cyan-50 to-blue-50 border-2 border-cyan-300 rounded-xl p-4">
+              <h4 className="text-sm font-bold text-cyan-800 mb-3">🏦 Interbank Activity</h4>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-green-700">Total Lent:</span>
+                  <span className="font-bold text-green-900">${lentAmount.toFixed(1)}M</span>
+                </div>
+                <div className="text-xs text-green-600">
+                  {bankTransactions.filter(tx => tx.from_bank === bankNumericId && tx.action === 'INCREASE_LENDING').length} lending transactions
+                </div>
+                <div className="flex justify-between items-center mt-2 pt-2 border-t border-cyan-200">
+                  <span className="text-xs text-red-700">Total Borrowed:</span>
+                  <span className="font-bold text-red-900">${borrowedAmount.toFixed(1)}M</span>
+                </div>
+                <div className="text-xs text-red-600">
+                  {bankTransactions.filter(tx => tx.to_bank === bankNumericId && tx.action === 'INCREASE_LENDING').length} borrowing transactions
+                </div>
+              </div>
             </div>
-            <div className="bg-gradient-to-br from-red-50 to-red-100 border-2 border-red-300 rounded-lg p-4">
-              <p className="text-sm text-red-700 font-bold mb-2">💸 Total Borrowed</p>
-              <p className="text-3xl font-bold text-red-900">${borrowedAmount.toFixed(1)}M</p>
-              <p className="text-xs text-red-600 mt-1">{bankTransactions.filter(tx => tx.to_bank === bankNumericId && tx.action === 'INCREASE_LENDING').length} transactions</p>
-            </div>
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 border-2 border-purple-300 rounded-lg p-4">
-              <p className="text-sm text-purple-700 font-bold mb-2">📈 Market Investments</p>
-              <p className="text-3xl font-bold text-purple-900">${investedAmount.toFixed(1)}M</p>
-              <p className="text-xs text-purple-600 mt-1">{bankTransactions.filter(tx => tx.from_bank === bankNumericId && tx.action === 'INVEST_MARKET').length} transactions</p>
+            
+            {/* Market Activity Section */}
+            <div className="bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-purple-300 rounded-xl p-4">
+              <h4 className="text-sm font-bold text-purple-800 mb-3">📊 Market Activity</h4>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-purple-700">Total Invested:</span>
+                  <span className="font-bold text-purple-900">${investedAmount.toFixed(1)}M</span>
+                </div>
+                <div className="text-xs text-purple-600">
+                  {bankTransactions.filter(tx => tx.from_bank === bankNumericId && tx.action === 'INVEST_MARKET').length} investment transactions
+                </div>
+                <div className="flex justify-between items-center mt-2 pt-2 border-t border-purple-200">
+                  <span className="text-xs text-pink-700">Total Divested:</span>
+                  <span className="font-bold text-pink-900">
+                    ${bankTransactions
+                      .filter(tx => tx.from_bank === bankNumericId && tx.action === 'DIVEST_MARKET')
+                      .reduce((sum, tx) => sum + tx.amount, 0)
+                      .toFixed(1)}M
+                  </span>
+                </div>
+                <div className="text-xs text-pink-600">
+                  {bankTransactions.filter(tx => tx.from_bank === bankNumericId && tx.action === 'DIVEST_MARKET').length} divestment transactions
+                </div>
+                <div className="mt-2 pt-2 border-t border-purple-200 text-xs">
+                  <span className="text-gray-600">Net Market Position: </span>
+                  <span className={`font-bold ${(investedAmount - bankTransactions.filter(tx => tx.from_bank === bankNumericId && tx.action === 'DIVEST_MARKET').reduce((sum, tx) => sum + tx.amount, 0)) >= 0 ? 'text-purple-900' : 'text-pink-900'}`}>
+                    ${(investedAmount - bankTransactions.filter(tx => tx.from_bank === bankNumericId && tx.action === 'DIVEST_MARKET').reduce((sum, tx) => sum + tx.amount, 0)).toFixed(1)}M
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
           
