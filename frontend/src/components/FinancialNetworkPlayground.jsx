@@ -16,6 +16,9 @@ import InstitutionPanel from "./InstitutionPanel";
 import MetricsPanel from "./MetricsPanel";
 import CanvasToolbar from "./CanvasToolbar";
 import ScenarioPanel from "./ScenarioPanel";
+import BackendSimulationPanel from "./BackendSimulationPanel";
+import RealTimeSimulationPanel from "./RealTimeSimulationPanel";
+import SimulationResultCard from "./SimulationResultCard";
 
 const FinancialNetworkPlayground = () => {
   const { user } = useUser();
@@ -28,9 +31,8 @@ const FinancialNetworkPlayground = () => {
       name: "Central Bank A",
       position: { x: 200, y: 150 },
       capital: 1000,
-      liquidity: 500,
+      target: 2.5,
       risk: 0.2,
-      strategy: "conservative",
     },
     {
       id: "bank2",
@@ -38,9 +40,8 @@ const FinancialNetworkPlayground = () => {
       name: "Commercial Bank B",
       position: { x: 400, y: 150 },
       capital: 800,
-      liquidity: 400,
+      target: 3.5,
       risk: 0.3,
-      strategy: "balanced",
     },
     {
       id: "exchange1",
@@ -48,9 +49,8 @@ const FinancialNetworkPlayground = () => {
       name: "Stock Exchange X",
       position: { x: 300, y: 300 },
       capital: 1200,
-      liquidity: 600,
+      target: 4.0,
       risk: 0.25,
-      strategy: "aggressive",
     },
     {
       id: "clearing1",
@@ -58,9 +58,8 @@ const FinancialNetworkPlayground = () => {
       name: "Clearing House C",
       position: { x: 500, y: 300 },
       capital: 900,
-      liquidity: 450,
+      target: 2.0,
       risk: 0.15,
-      strategy: "conservative",
     },
   ]);
 
@@ -137,6 +136,30 @@ const FinancialNetworkPlayground = () => {
 
   // Simulation history for analysis
   const [simulationHistory, setSimulationHistory] = useState([]);
+
+  // Backend simulation result (from POST /api/simulation/run)
+  const [backendResult, setBackendResult] = useState(null);
+
+  // Real-time simulation state
+  const [activeTransactions, setActiveTransactions] = useState([]);
+  const [realtimeConnections, setRealtimeConnections] = useState([]);
+
+  // Derive metrics from backend result when present (so MetricsPanel reflects last run)
+  const effectiveMetrics = backendResult?.summary
+    ? {
+        systemicRisk: backendResult.summary.default_rate ?? metrics.systemicRisk,
+        liquidityFlow: Math.min(
+          1,
+          (backendResult.summary.final_total_equity ?? 0) / 1000
+        ) || metrics.liquidityFlow,
+        networkCongestion: (backendResult.summary.transactions_logged ?? 0) / 500 || metrics.networkCongestion,
+        stabilityIndex: backendResult.summary.surviving_banks != null
+          ? Math.min(1, backendResult.summary.surviving_banks / 20)
+          : metrics.stabilityIndex,
+        cascadeRisk: (backendResult.summary.total_cascade_events ?? 0) / 10 || metrics.cascadeRisk,
+        interconnectedness: backendResult.summary.system_collapsed ? 0.9 : 0.6,
+      }
+    : metrics;
 
   // Alerts and events
   const [alerts, setAlerts] = useState([]);
@@ -283,9 +306,8 @@ const FinancialNetworkPlayground = () => {
       name: `New ${type.charAt(0).toUpperCase() + type.slice(1)} ${institutions.length + 1}`,
       position: { x: Math.random() * 600 + 50, y: Math.random() * 400 + 50 },
       capital: 500,
-      liquidity: 250,
+      target: 3.0,
       risk: 0.2,
-      strategy: "balanced",
     };
     setInstitutions((prev) => [...prev, newInst]);
   };
@@ -341,7 +363,7 @@ const FinancialNetworkPlayground = () => {
           prev.map((i) => ({
             ...i,
             risk: i.risk * 1.5,
-            liquidity: i.liquidity * 0.5,
+            capital: i.capital * 0.5,
           })),
         );
         addAlert({
@@ -394,6 +416,66 @@ const FinancialNetworkPlayground = () => {
     }
   };
 
+  const handleTransactionEvent = (event) => {
+    if (event.type === 'init') {
+      // Initialize connections from backend
+      setRealtimeConnections(event.connections);
+    } else if (event.type === 'transaction') {
+      // Add active transaction for visualization
+      const txId = `tx-${event.step}-${event.from_bank}-${Date.now()}`;
+      setActiveTransactions((prev) => [
+        ...prev,
+        {
+          id: txId,
+          from: event.from_bank,
+          to: event.to_bank,
+          amount: event.amount,
+          action: event.action,
+        },
+      ]);
+
+      // Remove after animation duration
+      setTimeout(() => {
+        setActiveTransactions((prev) => prev.filter((tx) => tx.id !== txId));
+      }, 2000);
+
+      // Update connection if it's a lending action
+      if (event.action === 'INCREASE_LENDING' && event.to_bank !== null) {
+        setRealtimeConnections((prev) => {
+          const existing = prev.find(
+            (c) => c.from === event.from_bank && c.to === event.to_bank
+          );
+          if (existing) {
+            return prev.map((c) =>
+              c.from === event.from_bank && c.to === event.to_bank
+                ? { ...c, amount: c.amount + event.amount }
+                : c
+            );
+          } else {
+            return [
+              ...prev,
+              {
+                from: event.from_bank,
+                to: event.to_bank,
+                amount: event.amount,
+              },
+            ];
+          }
+        });
+      }
+    }
+  };
+
+  const handleDefaultEvent = (event) => {
+    // Mark institution as defaulted
+    addAlert({
+      type: "critical",
+      institution: `Bank ${event.bank_id}`,
+      message: `Bank has defaulted (equity: $${event.equity.toFixed(2)}M)`,
+      severity: "high",
+    });
+  };
+
   return (
     <div className="w-full h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 text-gray-900 overflow-hidden flex flex-col relative">
       {/* Minimal Top Bar */}
@@ -442,6 +524,18 @@ const FinancialNetworkPlayground = () => {
               institutions={institutions}
             />
             <ScenarioPanel onApplyScenario={applyScenario} />
+            <BackendSimulationPanel
+              onResult={setBackendResult}
+              lastResult={backendResult}
+              institutions={institutions}
+            />
+            <RealTimeSimulationPanel
+              onResult={setBackendResult}
+              lastResult={backendResult}
+              institutions={institutions}
+              onTransactionEvent={handleTransactionEvent}
+              onDefaultEvent={handleDefaultEvent}
+            />
           </div>
         </div>
 
@@ -487,6 +581,8 @@ const FinancialNetworkPlayground = () => {
             isSimulating={isSimulating}
             zoomLevel={zoomLevel}
             tool={tool}
+            activeTransactions={activeTransactions}
+            realtimeConnections={realtimeConnections}
           />
 
           {/* Connection Hint - Bottom Left */}
@@ -532,7 +628,12 @@ const FinancialNetworkPlayground = () => {
                 <span>Metrics</span>
               </h2>
             </div>
-            <MetricsPanel metrics={metrics} />
+            {backendResult && (
+              <div className="mb-4">
+                <SimulationResultCard result={backendResult} />
+              </div>
+            )}
+            <MetricsPanel metrics={effectiveMetrics} />
             {selectedInstitution && (
               <InstitutionPanel
                 institution={selectedInstitution}

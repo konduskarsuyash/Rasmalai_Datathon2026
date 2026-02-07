@@ -13,6 +13,8 @@ const NetworkCanvas = ({
   isSimulating,
   zoomLevel = 1,
   tool = "select",
+  activeTransactions = [],
+  realtimeConnections = [],
 }) => {
   const canvasRef = useRef(null);
   const [dragging, setDragging] = useState(null);
@@ -73,6 +75,24 @@ const NetworkCanvas = ({
       }
     });
 
+    // Draw real-time connections (from backend simulation)
+    realtimeConnections.forEach((conn) => {
+      const source = institutions.find((i) => i.id === `bank${conn.from + 1}`);
+      const target = institutions.find((i) => i.id === `bank${conn.to + 1}`);
+      if (source && target) {
+        drawRealtimeConnection(ctx, source, target, conn);
+      }
+    });
+
+    // Draw active transactions
+    activeTransactions.forEach((tx) => {
+      const source = institutions.find((i) => i.id === `bank${tx.from + 1}`);
+      const target = tx.to !== null ? institutions.find((i) => i.id === `bank${tx.to + 1}`) : null;
+      if (source) {
+        drawTransaction(ctx, source, target, tx);
+      }
+    });
+
     // Draw institutions with pulse effect
     institutions.forEach((inst) => {
       drawModernInstitution(ctx, inst, selectedInstitution?.id === inst.id);
@@ -114,6 +134,8 @@ const NetworkCanvas = ({
     connectingFrom,
     connectionEnd,
     zoomLevel,
+    activeTransactions,
+    realtimeConnections,
   ]);
 
   const drawModernGrid = (ctx, width, height) => {
@@ -468,6 +490,155 @@ const NetworkCanvas = ({
     ctx.arc(x + radius - 10, y - radius + 10, 6, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
+  };
+
+  const drawRealtimeConnection = (ctx, source, target, conn) => {
+    // Draw real-time connection in bright cyan
+    const angle = Math.atan2(
+      target.position.y - source.position.y,
+      target.position.x - source.position.x,
+    );
+
+    const sourceRadius = 45;
+    const targetRadius = 45;
+
+    const startX = source.position.x + Math.cos(angle) * sourceRadius;
+    const startY = source.position.y + Math.sin(angle) * sourceRadius;
+    const endX = target.position.x - Math.cos(angle) * targetRadius;
+    const endY = target.position.y - Math.sin(angle) * targetRadius;
+
+    // Bright animated connection
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = "#06b6d4";
+
+    const gradient = ctx.createLinearGradient(startX, startY, endX, endY);
+    gradient.addColorStop(0, "#06b6d4");
+    gradient.addColorStop(0.5, "#0891b2");
+    gradient.addColorStop(1, "#06b6d4");
+
+    ctx.strokeStyle = gradient;
+    ctx.lineWidth = 4;
+    ctx.lineCap = "round";
+
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+
+    // Arrowhead
+    const headlen = 16;
+    ctx.beginPath();
+    ctx.moveTo(endX, endY);
+    ctx.lineTo(
+      endX - headlen * Math.cos(angle - Math.PI / 6),
+      endY - headlen * Math.sin(angle - Math.PI / 6),
+    );
+    ctx.lineTo(
+      endX - headlen * Math.cos(angle + Math.PI / 6),
+      endY - headlen * Math.sin(angle + Math.PI / 6),
+    );
+    ctx.closePath();
+    ctx.fillStyle = "#0891b2";
+    ctx.fill();
+
+    // Amount label
+    const midX = (startX + endX) / 2;
+    const midY = (startY + endY) / 2;
+
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = "#06b6d4";
+
+    ctx.fillStyle = "#ffffff";
+    ctx.strokeStyle = "#06b6d4";
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+    ctx.roundRect(midX - 28, midY - 12, 56, 24, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#0891b2";
+    ctx.font = "bold 11px system-ui";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`$${conn.amount.toFixed(1)}M`, midX, midY);
+  };
+
+  const drawTransaction = (ctx, source, target, tx) => {
+    if (!target) {
+      // Market transaction or cash hoarding - show at source
+      ctx.save();
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = "#f59e0b";
+
+      // Pulsing circle at source
+      const pulseSize = 20 + Math.sin(Date.now() / 100) * 5;
+      
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(source.position.x, source.position.y, pulseSize, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = "#f59e0b";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Transaction label
+      ctx.fillStyle = "#f59e0b";
+      ctx.font = "bold 12px system-ui";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(tx.action.replace(/_/g, ' '), source.position.x, source.position.y);
+      
+      ctx.restore();
+      return;
+    }
+
+    // Bank-to-bank transaction - animate along path
+    const angle = Math.atan2(
+      target.position.y - source.position.y,
+      target.position.x - source.position.x,
+    );
+
+    const sourceRadius = 45;
+    const targetRadius = 45;
+
+    const startX = source.position.x + Math.cos(angle) * sourceRadius;
+    const startY = source.position.y + Math.sin(angle) * sourceRadius;
+    const endX = target.position.x - Math.cos(angle) * targetRadius;
+    const endY = target.position.y - Math.sin(angle) * targetRadius;
+
+    // Animated particle moving along path
+    const progress = ((Date.now() % 2000) / 2000);
+    const txX = startX + (endX - startX) * progress;
+    const txY = startY + (endY - startY) * progress;
+
+    ctx.save();
+    ctx.shadowBlur = 25;
+    ctx.shadowColor = "#10b981";
+
+    // Large glowing circle
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(txX, txY, 18, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "#10b981";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+
+    // Amount inside
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#10b981";
+    ctx.font = "bold 14px system-ui";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`$${tx.amount.toFixed(0)}`, txX, txY);
+
+    ctx.restore();
   };
 
   const handleMouseDown = (e) => {

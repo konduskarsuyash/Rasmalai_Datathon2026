@@ -98,6 +98,8 @@ This platform simulates financial infrastructure networks consisting of banks, e
 - ✅ `/api/contagion` - Contagion simulation engine
 - ✅ `/api/equilibrium` - Game-theoretic equilibrium analysis
 - ✅ `/api/users` - User management and data persistence
+- ✅ `/api/simulation/run` - Advanced simulation v2 with ML policy
+- ✅ **NEW: Per-node parameters** - Custom configuration for each bank in simulation
 
 #### **Network Management**
 - ✅ Create/Read/Update/Delete networks
@@ -314,6 +316,11 @@ Rasmalai_Datathon2026/
 - `GET /api/users/{user_id}` - Get user data
 - `GET /api/users/{user_id}/networks` - Get user's networks
 
+### **Simulation (v2)**
+- `POST /api/simulation/run` - Run advanced simulation with ML policy
+  - Supports per-node parameters for custom bank configurations
+  - See [NODE_PARAMETERS.md](./NODE_PARAMETERS.md) for detailed documentation
+
 ---
 
 ## 🎨 UI Features
@@ -340,6 +347,24 @@ Rasmalai_Datathon2026/
 ---
 
 ## 🧪 Simulation Features
+
+### **Backend Simulation v2 (NEW)**
+The platform now supports advanced backend simulations with customizable node parameters:
+
+#### **Using Playground Nodes**
+1. Create institutions in the playground canvas
+2. Configure each institution's properties (capital, liquidity, risk, strategy)
+3. In the Backend Simulation panel, toggle "Use Playground Nodes" ON
+4. Click "Run simulation" - backend will use your exact playground configuration
+
+#### **Node Parameters Support**
+- **Initial Capital**: Starting capital for each bank
+- **Initial Liquidity**: Starting cash/liquidity reserves
+- **Risk Level**: Risk tolerance (0-1 scale)
+- **Strategy**: Conservative, Balanced, or Aggressive
+- **Custom Amounts**: Per-node lending and investment amounts
+
+For detailed documentation, see [NODE_PARAMETERS.md](./NODE_PARAMETERS.md)
 
 ### **Shock Types**
 1. **Liquidity Shock** - Sudden loss of liquid assets

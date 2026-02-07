@@ -60,6 +60,7 @@ async def get_optional_user(credentials: Optional[HTTPAuthorizationCredentials] 
     """
     Get user if authenticated, otherwise return None.
     Returns same shape as get_current_user: {user_id, session_id, session_data}.
+    Does NOT raise exceptions - returns None if authentication fails.
     """
     if not credentials:
         return None
@@ -74,6 +75,7 @@ async def get_optional_user(credentials: Optional[HTTPAuthorizationCredentials] 
             "session_data": session_data,
         }
     except HTTPException:
-        raise
+        # For optional auth, return None instead of raising
+        return None
     except Exception:
         return None

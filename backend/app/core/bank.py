@@ -159,26 +159,73 @@ class Bank:
         }
 
 
-def create_banks(num_banks: int, randomize: bool = True) -> List[Bank]:
+def create_banks(num_banks: int, randomize: bool = True, bank_configs: Optional[List] = None) -> List[Bank]:
+    """
+    Create banks with optional per-bank configurations.
+    
+    Args:
+        num_banks: Number of banks to create
+        randomize: If True and no configs provided, randomize bank parameters
+        bank_configs: Optional list of BankConfig objects with per-bank settings
+    """
     banks = []
     for i in range(num_banks):
-        bank_type = i % 4
-        if bank_type == 0:
-            cash, borrowed, investments = random.uniform(150, 200), random.uniform(30, 50), random.uniform(0, 10)
-        elif bank_type == 1:
-            cash, borrowed, investments = random.uniform(80, 120), random.uniform(50, 70), random.uniform(10, 30)
-        elif bank_type == 2:
-            cash, borrowed, investments = random.uniform(30, 60), random.uniform(20, 40), random.uniform(0, 15)
+        # Check if we have a specific config for this bank
+        if bank_configs and i < len(bank_configs):
+            config = bank_configs[i]
+            # Use capital to derive initial balance sheet
+            # Liquidity is a percentage of capital based on target leverage
+            cash = config.initial_capital / config.target_leverage
+            # Borrowed amount based on target leverage
+            borrowed = config.initial_capital * (config.target_leverage - 1) / config.target_leverage
+            # Initial small investments
+            investments = config.initial_capital * 0.1
+            
+            # Map risk factor to targets (lower risk = more conservative)
+            if config.risk_factor < 0.3:
+                # Conservative
+                targets = BankTargets(
+                    target_leverage=max(1.5, config.target_leverage * 0.7),
+                    target_liquidity=0.4,
+                    target_market_exposure=0.1
+                )
+            elif config.risk_factor > 0.6:
+                # Aggressive
+                targets = BankTargets(
+                    target_leverage=min(10.0, config.target_leverage * 1.3),
+                    target_liquidity=0.15,
+                    target_market_exposure=0.35
+                )
+            else:
+                # Balanced
+                targets = BankTargets(
+                    target_leverage=config.target_leverage,
+                    target_liquidity=0.3,
+                    target_market_exposure=0.2
+                )
+                
+            bs = BalanceSheet(cash=cash, investments=investments, loans_given=0.0, borrowed=borrowed)
+            bank = Bank(bank_id=i, balance_sheet=bs, targets=targets)
+            banks.append(bank)
         else:
-            cash, borrowed, investments = random.uniform(60, 90), random.uniform(80, 120), random.uniform(30, 50)
-        bs = BalanceSheet(cash=cash, investments=investments, loans_given=0.0, borrowed=borrowed)
-        if bank_type == 0:
-            targets = BankTargets(2.0, 0.4, 0.1)
-        elif bank_type == 1:
-            targets = BankTargets(3.0, 0.3, 0.2)
-        elif bank_type == 2:
-            targets = BankTargets(2.5, 0.5, 0.1)
-        else:
-            targets = BankTargets(4.5, 0.15, 0.35)
-        banks.append(Bank(bank_id=i, balance_sheet=bs, targets=targets))
+            # Use default randomized approach
+            bank_type = i % 4
+            if bank_type == 0:
+                cash, borrowed, investments = random.uniform(150, 200), random.uniform(30, 50), random.uniform(0, 10)
+            elif bank_type == 1:
+                cash, borrowed, investments = random.uniform(80, 120), random.uniform(50, 70), random.uniform(10, 30)
+            elif bank_type == 2:
+                cash, borrowed, investments = random.uniform(30, 60), random.uniform(20, 40), random.uniform(0, 15)
+            else:
+                cash, borrowed, investments = random.uniform(60, 90), random.uniform(80, 120), random.uniform(30, 50)
+            bs = BalanceSheet(cash=cash, investments=investments, loans_given=0.0, borrowed=borrowed)
+            if bank_type == 0:
+                targets = BankTargets(2.0, 0.4, 0.1)
+            elif bank_type == 1:
+                targets = BankTargets(3.0, 0.3, 0.2)
+            elif bank_type == 2:
+                targets = BankTargets(2.5, 0.5, 0.1)
+            else:
+                targets = BankTargets(4.5, 0.15, 0.35)
+            banks.append(Bank(bank_id=i, balance_sheet=bs, targets=targets))
     return banks

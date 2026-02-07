@@ -13,6 +13,14 @@ from app.ml.policy import select_action
 
 
 @dataclass
+class BankConfig:
+    """Simplified configuration for individual bank initialization."""
+    initial_capital: float = 100.0
+    target_leverage: float = 3.0
+    risk_factor: float = 0.2
+
+
+@dataclass
 class SimulationConfig:
     num_banks: int = 20
     num_steps: int = 30
@@ -21,6 +29,8 @@ class SimulationConfig:
     verbose: bool = True
     lending_amount: float = 10.0
     investment_amount: float = 10.0
+    connection_density: float = 0.2
+    bank_configs: Optional[List[BankConfig]] = None
 
 
 @dataclass
@@ -35,9 +45,9 @@ class SimulationState:
 def run_simulation_v2(config: SimulationConfig, featherless_fn: Optional[Callable] = None) -> Dict:
     GLOBAL_LEDGER.clear()
     state = SimulationState()
-    state.banks = create_banks(config.num_banks)
+    state.banks = create_banks(config.num_banks, bank_configs=config.bank_configs)
     state.markets = create_default_markets()
-    _create_interbank_network(state.banks, connection_density=0.2)
+    _create_interbank_network(state.banks, connection_density=config.connection_density)
 
     history = {
         "steps": [],
@@ -56,7 +66,7 @@ def run_simulation_v2(config: SimulationConfig, featherless_fn: Optional[Callabl
         step_log = {"time": t, "actions": [], "defaults": [], "cascades": 0, "market_flows": {}}
         market_flows = {"BANK_INDEX": 0.0, "FIN_SERVICES": 0.0}
 
-        for bank in state.banks:
+        for bank_idx, bank in enumerate(state.banks):
             if bank.is_defaulted:
                 continue
             neighbor_defaults = _count_neighbor_defaults(bank, state.banks)
@@ -72,18 +82,30 @@ def run_simulation_v2(config: SimulationConfig, featherless_fn: Optional[Callabl
             action = BankAction[ml_action.value]
             counterparty_id = _select_counterparty(bank, state.banks, action)
             market_id = random.choice(["BANK_INDEX", "FIN_SERVICES"])
+            
+            # Get per-bank amounts if available, otherwise use defaults
+            if config.bank_configs and bank_idx < len(config.bank_configs):
+                bank_config = config.bank_configs[bank_idx]
+                lending_amt = bank_config.lending_amount
+                investment_amt = bank_config.investment_amount
+            else:
+                lending_amt = config.lending_amount
+                investment_amt = config.investment_amount
+            
+            amount = lending_amt if "LENDING" in action.value else investment_amt
+            
             bank.execute_action(
                 action=action,
                 time_step=t,
                 counterparty_id=counterparty_id,
                 market_id=market_id,
-                amount=config.lending_amount if "LENDING" in action.value else config.investment_amount,
+                amount=amount,
                 reason=reason,
             )
             if action == BankAction.INVEST_MARKET:
-                market_flows[market_id] += config.investment_amount
+                market_flows[market_id] += investment_amt
             elif action == BankAction.DIVEST_MARKET:
-                market_flows[market_id] -= config.investment_amount
+                market_flows[market_id] -= investment_amt
             step_log["actions"].append({
                 "bank_id": bank.bank_id,
                 "action": action.value,
