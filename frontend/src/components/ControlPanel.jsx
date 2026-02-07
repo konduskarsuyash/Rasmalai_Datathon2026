@@ -1,209 +1,67 @@
 // components/ControlPanel.jsx
-import { useState } from 'react';
-
-const ControlPanel = ({ parameters, onParametersChange, onAddInstitution, onAddConnection, institutions }) => {
-  const [showAddConnection, setShowAddConnection] = useState(false);
-  const [newConnection, setNewConnection] = useState({
-    source: '',
-    target: '',
-    type: 'credit',
-    exposure: 100
-  });
-
-  const handleAddConnection = () => {
-    if (newConnection.source && newConnection.target && newConnection.source !== newConnection.target) {
-      onAddConnection(
-        newConnection.source,
-        newConnection.target,
-        newConnection.type,
-        parseFloat(newConnection.exposure)
-      );
-      setNewConnection({ source: '', target: '', type: 'credit', exposure: 100 });
-      setShowAddConnection(false);
-    }
-  };
+const ControlPanel = ({
+  onAddInstitution,
+  institutions,
+  onClearAll,
+}) => {
+  const bankCount = institutions.filter(i => i.type === 'bank' && !i.isMarket).length;
 
   return (
-    <div className="p-4 space-y-6">
+    <div className="p-4 space-y-4">
       <div>
-        <h3 className="text-lg font-semibold text-blue-400 mb-3">Add Institutions</h3>
+        <h3 className="text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-3">
+          Network Setup
+        </h3>
         <div className="space-y-2">
           <button
-            onClick={() => onAddInstitution('bank')}
-            className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors"
+            onClick={() => onAddInstitution("bank")}
+            className="w-full px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500 text-white rounded-lg text-sm font-medium transition-all duration-200 shadow-md hover:shadow-lg"
           >
-            + Add Bank 🏦
+            + Add Bank 🏛️
           </button>
-          <button
-            onClick={() => onAddInstitution('exchange')}
-            className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-sm font-medium transition-colors"
-          >
-            + Add Exchange 📊
-          </button>
-          <button
-            onClick={() => onAddInstitution('clearinghouse')}
-            className="w-full px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-lg text-sm font-medium transition-colors"
-          >
-            + Add Clearing House ⚖️
-          </button>
+          
+          {bankCount === 0 && (
+            <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+              <p className="text-xs text-yellow-800 font-medium">
+                👋 <span className="font-bold">Start by adding your first bank!</span>
+              </p>
+              <p className="text-xs text-yellow-700 mt-1">
+                Click the button above to create your financial network.
+              </p>
+            </div>
+          )}
+          
+          {bankCount > 0 && (
+            <div className="p-2 bg-blue-50 rounded-lg border border-blue-200">
+              <p className="text-xs text-blue-800">
+                <span className="font-bold">{bankCount} banks</span> in network
+              </p>
+            </div>
+          )}
+          
+          {bankCount > 0 && (
+            <button
+              onClick={onClearAll}
+              className="w-full px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white rounded-lg text-sm font-medium transition-all duration-200 shadow-md"
+            >
+              Clear All Banks
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="border-t border-gray-700 pt-4">
-        <h3 className="text-lg font-semibold text-blue-400 mb-3">Add Connection</h3>
-        {!showAddConnection ? (
-          <button
-            onClick={() => setShowAddConnection(true)}
-            className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-medium transition-colors"
-          >
-            + Create Connection
-          </button>
-        ) : (
-          <div className="space-y-3">
-            <select
-              value={newConnection.source}
-              onChange={(e) => setNewConnection(prev => ({ ...prev, source: e.target.value }))}
-              className="w-full px-3 py-2 bg-gray-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-            >
-              <option value="">Select Source</option>
-              {institutions.map(inst => (
-                <option key={inst.id} value={inst.id}>{inst.name}</option>
-              ))}
-            </select>
-
-            <select
-              value={newConnection.target}
-              onChange={(e) => setNewConnection(prev => ({ ...prev, target: e.target.value }))}
-              className="w-full px-3 py-2 bg-gray-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-            >
-              <option value="">Select Target</option>
-              {institutions.map(inst => (
-                <option key={inst.id} value={inst.id}>{inst.name}</option>
-              ))}
-            </select>
-
-            <select
-              value={newConnection.type}
-              onChange={(e) => setNewConnection(prev => ({ ...prev, type: e.target.value }))}
-              className="w-full px-3 py-2 bg-gray-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-            >
-              <option value="credit">Credit Exposure</option>
-              <option value="settlement">Settlement Obligation</option>
-              <option value="margin">Margin Requirement</option>
-            </select>
-
-            <input
-              type="number"
-              value={newConnection.exposure}
-              onChange={(e) => setNewConnection(prev => ({ ...prev, exposure: e.target.value }))}
-              placeholder="Exposure Amount (M)"
-              className="w-full px-3 py-2 bg-gray-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-            />
-
-            <div className="flex space-x-2">
-              <button
-                onClick={handleAddConnection}
-                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors"
-              >
-                Add
-              </button>
-              <button
-                onClick={() => setShowAddConnection(false)}
-                className="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg text-sm font-medium transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="border-t border-gray-700 pt-4">
-        <h3 className="text-lg font-semibold text-blue-400 mb-3">Simulation Parameters</h3>
-        <div className="space-y-3">
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Shock Magnitude</label>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.1"
-              value={parameters.shockMagnitude}
-              onChange={(e) => onParametersChange({ ...parameters, shockMagnitude: parseFloat(e.target.value) })}
-              className="w-full"
-            />
-            <span className="text-xs text-gray-400">{(parameters.shockMagnitude * 100).toFixed(0)}%</span>
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Shock Type</label>
-            <select
-              value={parameters.shockType}
-              onChange={(e) => onParametersChange({ ...parameters, shockType: e.target.value })}
-              className="w-full px-3 py-2 bg-gray-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-            >
-              <option value="liquidity">Liquidity Shock</option>
-              <option value="capital">Capital Shock</option>
-              <option value="operational">Operational Shock</option>
-              <option value="market">Market Shock</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Contagion Threshold</label>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={parameters.contagionThreshold}
-              onChange={(e) => onParametersChange({ ...parameters, contagionThreshold: parseFloat(e.target.value) })}
-              className="w-full"
-            />
-            <span className="text-xs text-gray-400">{(parameters.contagionThreshold * 100).toFixed(0)}%</span>
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Information Asymmetry</label>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.1"
-              value={parameters.informationAsymmetry}
-              onChange={(e) => onParametersChange({ ...parameters, informationAsymmetry: parseFloat(e.target.value) })}
-              className="w-full"
-            />
-            <span className="text-xs text-gray-400">{(parameters.informationAsymmetry * 100).toFixed(0)}%</span>
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Recovery Rate</label>
-            <input
-              type="range"
-              min="0"
-              max="0.5"
-              step="0.05"
-              value={parameters.recoveryRate}
-              onChange={(e) => onParametersChange({ ...parameters, recoveryRate: parseFloat(e.target.value) })}
-              className="w-full"
-            />
-            <span className="text-xs text-gray-400">{(parameters.recoveryRate * 100).toFixed(0)}%</span>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <label className="text-sm text-gray-400">Regulatory Intervention</label>
-            <button
-              onClick={() => onParametersChange({ ...parameters, regulatoryIntervention: !parameters.regulatoryIntervention })}
-              className={`px-4 py-1 rounded-lg text-sm font-medium transition-colors ${
-                parameters.regulatoryIntervention
-                  ? 'bg-green-600 hover:bg-green-700'
-                  : 'bg-gray-600 hover:bg-gray-500'
-              }`}
-            >
-              {parameters.regulatoryIntervention ? 'ON' : 'OFF'}
-            </button>
-          </div>
+      <div className="border-t border-gray-300 pt-4">
+        <div className="p-3 bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg border-2 border-blue-200">
+          <p className="text-xs text-gray-700 mb-2 font-bold">
+            🚀 Quick Start Guide:
+          </p>
+          <ol className="text-xs text-gray-600 space-y-1.5 list-decimal list-inside">
+            <li>Click <span className="font-bold text-blue-600">"+ Add Bank"</span> to create 3-5 banks</li>
+            <li>Click each bank node on canvas to configure parameters</li>
+            <li>Set Tier 1 Capital, Leverage, Risk & Interbank rates</li>
+            <li>Hold <kbd className="px-1 py-0.5 bg-gray-200 rounded text-xs font-mono">Ctrl</kbd> + drag to connect banks</li>
+            <li>Run <span className="font-bold text-green-600">"Backend Simulation"</span> below to watch live transactions!</li>
+          </ol>
         </div>
       </div>
     </div>
