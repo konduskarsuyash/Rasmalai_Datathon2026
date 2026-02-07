@@ -17,10 +17,10 @@ import MetricsPanel from "./MetricsPanel";
 import CanvasToolbar from "./CanvasToolbar";
 import ScenarioPanel from "./ScenarioPanel";
 import BackendSimulationPanel from "./BackendSimulationPanel";
-import RealTimeSimulationPanel from "./RealTimeSimulationPanel";
 import SimulationResultCard from "./SimulationResultCard";
 import BankDashboard from "./BankDashboard";
 import MarketDashboard from "./MarketDashboard";
+import LiveActivityFeed from "./LiveActivityFeed";
 
 const FinancialNetworkPlayground = () => {
   const { user } = useUser();
@@ -163,6 +163,7 @@ const FinancialNetworkPlayground = () => {
   const [allTransactions, setAllTransactions] = useState([]);
   const [activeDashboard, setActiveDashboard] = useState(null); // { type: 'bank' | 'market', id: string }
   const [isSimulationRunning, setIsSimulationRunning] = useState(false);
+  const [currentSimulationStep, setCurrentSimulationStep] = useState(0);
 
   // Derive metrics from backend result when present (so MetricsPanel reflects last run)
   const effectiveMetrics = backendResult?.summary
@@ -443,7 +444,11 @@ const FinancialNetworkPlayground = () => {
       // Reset historical data when simulation starts
       setHistoricalData([]);
       setAllTransactions([]);
+      setCurrentSimulationStep(0);
       setIsSimulationRunning(true);
+    } else if (event.type === 'step_start') {
+      // Update current step
+      setCurrentSimulationStep(event.step);
     } else if (event.type === 'transaction') {
       // Store transaction for dashboard
       setAllTransactions((prev) => [
@@ -671,12 +676,10 @@ const FinancialNetworkPlayground = () => {
                 setSelectedInstitution(null);
               }}
             />
-            <RealTimeSimulationPanel
-              onResult={setBackendResult}
-              lastResult={backendResult}
-              institutions={institutions.filter(i => !i.isMarket)}
+            <BackendSimulationPanel
+              institutions={institutions}
+              connections={connections}
               onTransactionEvent={handleTransactionEvent}
-              onDefaultEvent={handleDefaultEvent}
             />
           </div>
         </div>
@@ -761,6 +764,14 @@ const FinancialNetworkPlayground = () => {
                 </div>
               ))}
           </div>
+          
+          {/* Live Activity Feed - Show during simulation */}
+          {isSimulationRunning && (
+            <LiveActivityFeed 
+              transactions={allTransactions}
+              currentStep={currentSimulationStep}
+            />
+          )}
         </div>
 
         {/* Right Panel - Collapsible */}

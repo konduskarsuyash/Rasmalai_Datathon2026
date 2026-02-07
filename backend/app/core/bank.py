@@ -148,6 +148,38 @@ class Bank:
             return True
         return False
 
+    def book_investment_profit(self, markets_dict: Dict, time_step: int) -> float:
+        """
+        Book profits/losses from market investments based on current market returns.
+        Returns total profit/loss booked.
+        """
+        if self.is_defaulted:
+            return 0.0
+        
+        total_profit = 0.0
+        
+        for market_id, invested_amount in self.balance_sheet.investment_positions.items():
+            if market_id in markets_dict and invested_amount > 0:
+                market = markets_dict[market_id]
+                market_return = market.get_return()
+                
+                # Calculate profit based on return
+                profit = invested_amount * market_return
+                
+                # Book the profit by increasing cash
+                self.balance_sheet.cash += profit
+                total_profit += profit
+                
+                # Log the profit booking
+                if profit != 0:
+                    log_transaction(
+                        time_step, self.bank_id, None, "market", market_id,
+                        TransactionType.INVEST if profit > 0 else TransactionType.DIVEST,
+                        abs(profit), f"Profit booking: {market_return*100:.1f}% return"
+                    )
+        
+        return total_profit
+
     def snapshot(self) -> Dict:
         return {
             "bank_id": self.bank_id,

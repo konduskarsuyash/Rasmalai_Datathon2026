@@ -1,40 +1,46 @@
 """
-Simulation API: run v2 simulation (core + config + ml + optional featherless).
+Interactive Simulation API: Real-time simulation with pause/resume/modify capabilities.
 """
-from typing import Optional
+from typing import Optional, Dict
 import json
 import asyncio
-
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from app.core import run_simulation_v2, SimulationConfig, BankConfig, GLOBAL_LEDGER
+from pydantic import BaseModel, Field
+
+from app.core import SimulationConfig, GLOBAL_LEDGER
+from app.core.simulation_v2 import BankConfig
 from app.middleware.auth import get_optional_user
-from app.schemas.simulation import SimulationRunRequest, SimulationRunResponse
 
 router = APIRouter()
 
-
-def _get_featherless_fn():
-    """Return featherless priority function if API key is set, else None."""
-    try:
-        from app.config.settings import FEATHERLESS_API_KEY
-        if not FEATHERLESS_API_KEY:
-            return None
-        from app.featherless.decision_engine import get_strategic_priority, create_featherless_client
-        client = create_featherless_client()
-        if client is None:
-            return None
-
-        def fn(observation):
-            return get_strategic_priority(observation, client)
-
-        return fn
-    except Exception:
-        return None
+# Global simulation state (one active simulation per server instance)
+ACTIVE_SIMULATION = {
+    "state": None,
+    "is_running": False,
+    "is_paused": False,
+    "control_queue": asyncio.Queue(),
+}
 
 
-async def simulation_event_generator(config: SimulationConfig, featherless_fn):
-    """Generator that yields simulation events in real-time."""
+class SimulationCommand(BaseModel):
+    """Command to control running simulation."""
+    command: str = Field(..., description="Command: pause, resume, stop, delete_bank, add_capital")
+    bank_id: Optional[int] = Field(None, description="Bank ID for bank-specific commands")
+    amount: Optional[float] = Field(None, description="Amount for add_capital command")
+
+
+class InteractiveSimulationRequest(BaseModel):
+    """Request to start interactive simulation."""
+    num_banks: int = Field(default=20, ge=1, le=100)
+    num_steps: int = Field(default=30, ge=1, le=200)
+    node_parameters: Optional[list] = None
+    connection_density: float = Field(default=0.2, ge=0, le=1)
+    use_featherless: bool = Field(default=False)
+
+
+async def interactive_simulation_generator(config: SimulationConfig, control_queue: asyncio.Queue, featherless_fn):
+    """Generator for interactive simulation with pause/resume/modify."""
     from app.core.simulation_v2 import (
         SimulationState, create_default_markets, _create_interbank_network,
         _count_neighbor_defaults, _select_counterparty, _propagate_cascades,
@@ -50,6 +56,11 @@ async def simulation_event_generator(config: SimulationConfig, featherless_fn):
     state.markets = create_default_markets()
     _create_interbank_network(state.banks, connection_density=config.connection_density)
     
+    # Store in global state
+    ACTIVE_SIMULATION["state"] = state
+    ACTIVE_SIMULATION["is_running"] = True
+    ACTIVE_SIMULATION["is_paused"] = False
+    
     # Send initial state
     initial_banks = [
         {
@@ -62,7 +73,6 @@ async def simulation_event_generator(config: SimulationConfig, featherless_fn):
         for bank in state.banks
     ]
     
-    # Send initial market states
     initial_markets = []
     for market_id, market in state.markets.markets.items():
         initial_markets.append({
@@ -72,7 +82,6 @@ async def simulation_event_generator(config: SimulationConfig, featherless_fn):
             "total_invested": market.total_invested,
         })
     
-    # Send initial connections
     initial_connections = []
     for bank in state.banks:
         for counterparty_id, amount in bank.balance_sheet.loan_positions.items():
@@ -86,12 +95,51 @@ async def simulation_event_generator(config: SimulationConfig, featherless_fn):
     
     # Run simulation step by step
     for t in range(config.num_steps):
+        # Check for pause
+        while ACTIVE_SIMULATION["is_paused"]:
+            yield f"data: {json.dumps({'type': 'paused', 'step': t})}\n\n"
+            await asyncio.sleep(0.5)
+            
+            # Process control commands during pause
+            try:
+                command = await asyncio.wait_for(control_queue.get(), timeout=0.1)
+                
+                if command["command"] == "resume":
+                    ACTIVE_SIMULATION["is_paused"] = False
+                    yield f"data: {json.dumps({'type': 'resumed', 'step': t})}\n\n"
+                    
+                elif command["command"] == "stop":
+                    ACTIVE_SIMULATION["is_running"] = False
+                    yield f"data: {json.dumps({'type': 'stopped', 'step': t})}\n\n"
+                    return
+                    
+                elif command["command"] == "delete_bank":
+                    bank_id = command["bank_id"]
+                    bank = next((b for b in state.banks if b.bank_id == bank_id), None)
+                    if bank:
+                        bank.is_defaulted = True
+                        yield f"data: {json.dumps({'type': 'bank_deleted', 'bank_id': bank_id})}\n\n"
+                        
+                elif command["command"] == "add_capital":
+                    bank_id = command["bank_id"]
+                    amount = command["amount"]
+                    bank = next((b for b in state.banks if b.bank_id == bank_id), None)
+                    if bank:
+                        bank.balance_sheet.cash += amount
+                        yield f"data: {json.dumps({'type': 'capital_added', 'bank_id': bank_id, 'amount': amount, 'new_capital': bank.balance_sheet.equity})}\n\n"
+                        
+            except asyncio.TimeoutError:
+                continue
+        
+        if not ACTIVE_SIMULATION["is_running"]:
+            break
+            
         state.time_step = t
         state.defaults_this_step = []
         
         # Send step start event
         yield f"data: {json.dumps({'type': 'step_start', 'step': t})}\n\n"
-        await asyncio.sleep(1.0)  # Increased pause between steps for better visualization
+        await asyncio.sleep(0.8)
         
         # Process each bank
         for bank_idx, bank in enumerate(state.banks):
@@ -112,16 +160,13 @@ async def simulation_event_generator(config: SimulationConfig, featherless_fn):
             counterparty_id = _select_counterparty(bank, state.banks, action)
             market_id = random.choice(["BANK_INDEX", "FIN_SERVICES"])
             
-            # Get per-bank amounts if available
+            # Dynamic amounts based on bank strategy
             if config.bank_configs and bank_idx < len(config.bank_configs):
-                bank_config = config.bank_configs[bank_idx]
-                lending_amt = 10.0  # Default
-                investment_amt = 10.0
+                base_amount = 15.0
             else:
-                lending_amt = config.lending_amount
-                investment_amt = config.investment_amount
+                base_amount = 10.0
             
-            amount = lending_amt if "LENDING" in action.value else investment_amt
+            amount = base_amount
             
             # Execute action
             bank.execute_action(
@@ -145,7 +190,21 @@ async def simulation_event_generator(config: SimulationConfig, featherless_fn):
                 "reason": reason,
             }
             yield f"data: {json.dumps(transaction_event)}\n\n"
-            await asyncio.sleep(0.3)  # Increased pause between transactions for visibility
+            await asyncio.sleep(0.4)
+        
+        # Book profits from investments (every 5 steps)
+        if t % 5 == 0:
+            for bank in state.banks:
+                if not bank.is_defaulted:
+                    profit = bank.book_investment_profit(state.markets.markets, t)
+                    if abs(profit) > 0.1:
+                        profit_event = {
+                            "type": "profit_booking",
+                            "step": t,
+                            "bank_id": bank.bank_id,
+                            "profit": round(profit, 2),
+                        }
+                        yield f"data: {json.dumps(profit_event)}\n\n"
         
         # Check for defaults
         new_defaults = []
@@ -154,7 +213,6 @@ async def simulation_event_generator(config: SimulationConfig, featherless_fn):
                 new_defaults.append(bank.bank_id)
                 state.defaults_this_step.append(bank.bank_id)
                 
-                # Send default event
                 default_event = {
                     "type": "default",
                     "step": t,
@@ -175,11 +233,10 @@ async def simulation_event_generator(config: SimulationConfig, featherless_fn):
                 }
                 yield f"data: {json.dumps(cascade_event)}\n\n"
         
-        # Send step summary with detailed bank states
+        # Send step summary
         total_defaults = sum(1 for b in state.banks if b.is_defaulted)
         total_equity = sum(b.balance_sheet.equity for b in state.banks if not b.is_defaulted)
         
-        # Include detailed state for each bank for dashboard visualization
         bank_states = []
         for bank in state.banks:
             ratios = bank.balance_sheet.compute_ratios()
@@ -194,7 +251,6 @@ async def simulation_event_generator(config: SimulationConfig, featherless_fn):
                 "is_defaulted": bank.is_defaulted,
             })
         
-        # Include market states
         market_states = []
         for market_id, market in state.markets.markets.items():
             market_states.append({
@@ -218,7 +274,10 @@ async def simulation_event_generator(config: SimulationConfig, featherless_fn):
         if total_defaults >= config.num_banks:
             break
     
-    # Send completion event
+    # Cleanup
+    ACTIVE_SIMULATION["state"] = None
+    ACTIVE_SIMULATION["is_running"] = False
+    
     final_summary = {
         "type": "complete",
         "total_steps": t + 1,
@@ -228,23 +287,24 @@ async def simulation_event_generator(config: SimulationConfig, featherless_fn):
     yield f"data: {json.dumps(final_summary)}\n\n"
 
 
-@router.post("/run/stream")
-async def run_simulation_stream(
-    body: SimulationRunRequest,
+@router.post("/start")
+async def start_interactive_simulation(
+    body: InteractiveSimulationRequest,
     current_user: Optional[dict] = Depends(get_optional_user),
 ):
-    """
-    Run simulation with real-time streaming of transactions and events.
-    Uses Server-Sent Events (SSE) to stream simulation progress.
-    """
-    # Convert node parameters to BankConfig objects if provided
+    """Start an interactive simulation with pause/resume/modify capabilities."""
+    if ACTIVE_SIMULATION["is_running"]:
+        raise HTTPException(status_code=409, detail="Simulation already running")
+    
+    # Convert node parameters to BankConfig
     bank_configs = None
     if body.node_parameters:
+        from app.schemas.simulation import NodeParameters
         bank_configs = [
             BankConfig(
-                initial_capital=node.initial_capital,
-                target_leverage=node.target_leverage,
-                risk_factor=node.risk_factor,
+                initial_capital=node.get("initial_capital", 100),
+                target_leverage=node.get("target_leverage", 3.0),
+                risk_factor=node.get("risk_factor", 0.2),
             )
             for node in body.node_parameters
         ]
@@ -253,17 +313,23 @@ async def run_simulation_stream(
         num_banks=body.num_banks,
         num_steps=body.num_steps,
         use_featherless=body.use_featherless,
-        verbose=body.verbose,
-        lending_amount=body.lending_amount,
-        investment_amount=body.investment_amount,
+        verbose=False,
+        lending_amount=15.0,
+        investment_amount=15.0,
         connection_density=body.connection_density,
         bank_configs=bank_configs,
     )
     
-    featherless_fn = _get_featherless_fn() if body.use_featherless else None
+    # Create new control queue
+    ACTIVE_SIMULATION["control_queue"] = asyncio.Queue()
+    
+    featherless_fn = None
+    if body.use_featherless:
+        from app.routers.simulation import _get_featherless_fn
+        featherless_fn = _get_featherless_fn()
     
     return StreamingResponse(
-        simulation_event_generator(config, featherless_fn),
+        interactive_simulation_generator(config, ACTIVE_SIMULATION["control_queue"], featherless_fn),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -272,46 +338,38 @@ async def run_simulation_stream(
     )
 
 
-@router.post("/run", response_model=SimulationRunResponse)
-async def run_simulation(
-    body: SimulationRunRequest,
+@router.post("/control")
+async def control_simulation(
+    command: SimulationCommand,
     current_user: Optional[dict] = Depends(get_optional_user),
 ):
-    """
-    Run financial network simulation v2 (balance-sheet, ML policy, optional Featherless).
-    Supports per-node parameters (capital, target leverage, risk factor) for customized simulations.
-    """
-    # Convert node parameters to BankConfig objects if provided
-    bank_configs = None
-    if body.node_parameters:
-        bank_configs = [
-            BankConfig(
-                initial_capital=node.initial_capital,
-                target_leverage=node.target_leverage,
-                risk_factor=node.risk_factor,
-            )
-            for node in body.node_parameters
-        ]
+    """Send control command to running simulation."""
+    if not ACTIVE_SIMULATION["is_running"]:
+        raise HTTPException(status_code=404, detail="No active simulation")
     
-    config = SimulationConfig(
-        num_banks=body.num_banks,
-        num_steps=body.num_steps,
-        use_featherless=body.use_featherless,
-        verbose=body.verbose,
-        lending_amount=body.lending_amount,
-        investment_amount=body.investment_amount,
-        connection_density=body.connection_density,
-        bank_configs=bank_configs,
-    )
-    featherless_fn = _get_featherless_fn() if body.use_featherless else None
-    history = run_simulation_v2(config, featherless_fn=featherless_fn)
-    return SimulationRunResponse(
-        summary=history["summary"],
-        steps_count=len(history["steps"]),
-        defaults_over_time=history["defaults_over_time"],
-        total_equity_over_time=history["total_equity_over_time"],
-        market_prices=history["market_prices"],
-        cascade_events=history["cascade_events"],
-        system_logs=history["system_logs"],
-        bank_logs=history.get("bank_logs") if body.verbose else None,
-    )
+    if command.command == "pause":
+        ACTIVE_SIMULATION["is_paused"] = True
+        return {"status": "paused"}
+    
+    elif command.command in ["resume", "stop", "delete_bank", "add_capital"]:
+        await ACTIVE_SIMULATION["control_queue"].put({
+            "command": command.command,
+            "bank_id": command.bank_id,
+            "amount": command.amount,
+        })
+        return {"status": f"{command.command} queued"}
+    
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown command: {command.command}")
+
+
+@router.get("/status")
+async def get_simulation_status(
+    current_user: Optional[dict] = Depends(get_optional_user),
+):
+    """Get current simulation status."""
+    return {
+        "is_running": ACTIVE_SIMULATION["is_running"],
+        "is_paused": ACTIVE_SIMULATION["is_paused"],
+        "current_step": ACTIVE_SIMULATION["state"].time_step if ACTIVE_SIMULATION["state"] else None,
+    }

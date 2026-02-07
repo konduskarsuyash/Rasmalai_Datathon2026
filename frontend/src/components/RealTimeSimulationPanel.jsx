@@ -101,6 +101,10 @@ const RealTimeSimulationPanel = ({ onResult, lastResult, institutions, onTransac
 
       case 'step_start':
         setCurrentStep(event.step);
+        // Pass step_start to parent for activity tracking
+        if (onTransactionEvent) {
+          onTransactionEvent(event);
+        }
         break;
 
       case 'transaction':
@@ -137,6 +141,10 @@ const RealTimeSimulationPanel = ({ onResult, lastResult, institutions, onTransac
           defaults: event.total_defaults,
           surviving: event.surviving_banks,
         });
+        // Pass complete event to parent
+        if (onTransactionEvent) {
+          onTransactionEvent(event);
+        }
         if (onResult) {
           onResult({ summary: event });
         }

@@ -4,6 +4,11 @@ import { useEffect, useRef } from 'react';
 const BankDashboard = ({ bank, historicalData, transactions, onClose }) => {
   const canvasRef = useRef(null);
   
+  // Debug logging
+  console.log('BankDashboard opened for:', bank.name, 'ID:', bank.id);
+  console.log('Historical data points:', historicalData.length);
+  console.log('Transactions count:', transactions.length);
+  
   // Filter transactions for this specific bank
   // Handle both string IDs (like "bank1") and numeric IDs (like 0)
   const bankNumericId = typeof bank.id === 'string' 
@@ -30,9 +35,21 @@ const BankDashboard = ({ bank, historicalData, transactions, onClose }) => {
     })
     .filter(d => d.capital !== undefined);
   
+  // Get current state (either from latest historical data or from bank object)
+  const currentState = capitalHistory.length > 0
+    ? capitalHistory[capitalHistory.length - 1]
+    : {
+        capital: bank.capital || 0,
+        cash: 0,
+        investments: 0,
+        loans_given: 0,
+        borrowed: 0,
+        leverage: bank.target || 0,
+      };
+  
   // Draw capital chart
   useEffect(() => {
-    if (!canvasRef.current || capitalHistory.length === 0) return;
+    if (!canvasRef.current) return;
     
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
@@ -42,6 +59,15 @@ const BankDashboard = ({ bank, historicalData, transactions, onClose }) => {
     // Clear canvas
     ctx.fillStyle = '#f9fafb';
     ctx.fillRect(0, 0, width, height);
+    
+    // If no data yet, show placeholder
+    if (capitalHistory.length === 0) {
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '14px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('Waiting for simulation data...', width / 2, height / 2);
+      return;
+    }
     
     // Calculate scales
     const maxCapital = Math.max(...capitalHistory.map(d => d.capital), 1);
@@ -138,8 +164,6 @@ const BankDashboard = ({ bank, historicalData, transactions, onClose }) => {
   const investedAmount = bankTransactions
     .filter(tx => tx.from_bank === bankNumericId && tx.action === 'INVEST_MARKET')
     .reduce((sum, tx) => sum + tx.amount, 0);
-  
-  const currentState = capitalHistory[capitalHistory.length - 1] || {};
   
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">

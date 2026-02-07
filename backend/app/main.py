@@ -24,7 +24,7 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
 from .middleware.auth import get_optional_user
-from .routers import simulation, config_router, network
+from .routers import simulation, config_router, network, interactive_simulation
 
 app = FastAPI(
     title="Financial Network API",
@@ -45,6 +45,7 @@ app.add_middleware(
 )
 
 app.include_router(simulation.router, prefix="/api/simulation", tags=["simulation"])
+app.include_router(interactive_simulation.router, prefix="/api/interactive", tags=["interactive"])
 app.include_router(config_router.router, prefix="/api/config", tags=["config"])
 app.include_router(network.router, prefix="/api/networks", tags=["networks"])
 

@@ -4,18 +4,32 @@ import { useEffect, useRef } from 'react';
 const MarketDashboard = ({ market, historicalData, transactions, onClose }) => {
   const canvasRef = useRef(null);
   
+  // Debug logging
+  console.log('MarketDashboard opened for:', market.name, 'ID:', market.id);
+  console.log('Historical data points:', historicalData.length);
+  console.log('Transactions count:', transactions.length);
+  
   // Get historical market data
   const marketHistory = historicalData
     .map((step, index) => {
       const marketState = step.market_states?.find(m => m.market_id === market.id);
       return {
         step: index,
-        price: marketState?.price || market.capital || 100,
+        price: marketState?.price || 100,
         total_invested: marketState?.total_invested || 0,
         return: marketState?.return || 0,
       };
     })
     .filter(d => d.price !== undefined);
+  
+  // Get current state (either from latest historical data or defaults)
+  const currentState = marketHistory.length > 0
+    ? marketHistory[marketHistory.length - 1]
+    : {
+        price: 100,
+        total_invested: 0,
+        return: 0,
+      };
   
   // Filter transactions for this market
   const marketTransactions = transactions.filter(
@@ -139,8 +153,6 @@ const MarketDashboard = ({ market, historicalData, transactions, onClose }) => {
     .reduce((sum, tx) => sum + tx.amount, 0);
   
   const netFlow = totalInvestments - totalDivestments;
-  
-  const currentState = marketHistory[marketHistory.length - 1] || { price: 100, return: 0 };
   
   // Market sector information
   const sectorInfo = {
