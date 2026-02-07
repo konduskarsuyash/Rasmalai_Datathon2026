@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Square, Trash2, DollarSign } from 'lucide-react';
+import { Play, Pause, Square, Trash2, DollarSign, Plus } from 'lucide-react';
 
 const BackendSimulationPanel = ({ institutions, connections, onTransactionEvent }) => {
   const [isRunning, setIsRunning] = useState(false);
@@ -19,7 +19,6 @@ const BackendSimulationPanel = ({ institutions, connections, onTransactionEvent 
     if (isRunning) return;
 
     try {
-      // Prepare node parameters from institutions
       const nodeParameters = institutions
         .filter(inst => inst.type === 'bank' && !inst.isMarket)
         .map(inst => ({
@@ -40,7 +39,6 @@ const BackendSimulationPanel = ({ institutions, connections, onTransactionEvent 
       setIsPaused(false);
       setStats({ defaults: 0, totalEquity: 0, activeTransactions: 0 });
 
-      // Start the simulation via fetch with readable stream
       const response = await fetch('http://localhost:8000/api/interactive/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -54,15 +52,12 @@ const BackendSimulationPanel = ({ institutions, connections, onTransactionEvent 
         try {
           const errorJson = JSON.parse(errorText);
           errorDetail = errorJson.detail || errorText;
-        } catch (e) {
-          // Not JSON, use text as-is
-        }
+        } catch (e) {}
         alert(`Failed to start simulation: ${errorDetail}`);
         setIsRunning(false);
         return;
       }
 
-      // Read the SSE stream
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
 
@@ -83,9 +78,8 @@ const BackendSimulationPanel = ({ institutions, connections, onTransactionEvent 
           buffer += decoder.decode(value, { stream: true });
           console.log('Received chunk, buffer length:', buffer.length);
           
-          // Process complete SSE messages
           const messages = buffer.split('\n\n');
-          buffer = messages.pop() || ''; // Keep incomplete message
+          buffer = messages.pop() || '';
           
           console.log('Processing', messages.length, 'messages');
           
@@ -108,7 +102,6 @@ const BackendSimulationPanel = ({ institutions, connections, onTransactionEvent 
         setIsRunning(false);
       });
       
-      // Store reader for cleanup
       readerRef.current = reader;
 
     } catch (error) {
@@ -287,132 +280,179 @@ const BackendSimulationPanel = ({ institutions, connections, onTransactionEvent 
   const banks = institutions.filter(inst => inst.type === 'bank' && !inst.isMarket);
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-lg border border-gray-200">
-      <h2 className="text-2xl font-bold mb-4 text-gray-800">Backend Simulation Control</h2>
-
-      {/* Control Buttons */}
-      <div className="flex gap-3 mb-6">
-        {!isRunning && (
-          <button
-            onClick={startSimulation}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all"
-          >
-            <Play size={18} />
-            Start Simulation
-          </button>
-        )}
-
-        {isRunning && !isPaused && (
-          <button
-            onClick={pauseSimulation}
-            className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-all"
-          >
-            <Pause size={18} />
-            Pause
-          </button>
-        )}
-
-        {isRunning && isPaused && (
-          <button
-            onClick={resumeSimulation}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all"
-          >
-            <Play size={18} />
-            Resume
-          </button>
-        )}
-
-        {isRunning && (
-          <button
-            onClick={stopSimulation}
-            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all"
-          >
-            <Square size={18} />
-            Stop
-          </button>
-        )}
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      {/* Header with Gradient */}
+      <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-500 px-5 py-3.5">
+        <h2 className="text-lg font-bold text-white">Control</h2>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="p-4 bg-blue-50 rounded-lg">
-          <p className="text-sm text-gray-600">Current Step</p>
-          <p className="text-2xl font-bold text-blue-700">{currentStep}</p>
-        </div>
-        <div className="p-4 bg-red-50 rounded-lg">
-          <p className="text-sm text-gray-600">Defaults</p>
-          <p className="text-2xl font-bold text-red-700">{stats.defaults}</p>
-        </div>
-        <div className="p-4 bg-green-50 rounded-lg">
-          <p className="text-sm text-gray-600">Total Capital</p>
-          <p className="text-2xl font-bold text-green-700">${stats.totalEquity}M</p>
-        </div>
-      </div>
+      <div className="p-5 space-y-4">
+        {/* Control Buttons */}
+        <div className="flex gap-3">
+          {!isRunning && (
+            <button
+              onClick={startSimulation}
+              className="flex-1 flex items-center justify-center gap-2.5 px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors shadow-sm font-semibold text-[15px]"
+            >
+              <Play size={18} className="fill-current" />
+              <span>Start</span>
+            </button>
+          )}
 
-      {/* Paused Controls */}
-      {isPaused && (
-        <div className="border border-yellow-300 bg-yellow-50 p-4 rounded-lg mb-4">
-          <h3 className="font-bold text-yellow-800 mb-3">⏸️ Simulation Paused - Modify Network</h3>
+          {isRunning && !isPaused && (
+            <button
+              onClick={pauseSimulation}
+              className="flex-1 flex items-center justify-center gap-2.5 px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors shadow-sm font-semibold text-[15px]"
+            >
+              <Pause size={18} className="fill-current" />
+              <span>Pause</span>
+            </button>
+          )}
+
+          {isRunning && isPaused && (
+            <button
+              onClick={resumeSimulation}
+              className="flex-1 flex items-center justify-center gap-2.5 px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors shadow-sm font-semibold text-[15px]"
+            >
+              <Play size={18} className="fill-current" />
+              <span>Resume</span>
+            </button>
+          )}
+
+          {isRunning && (
+            <button
+              onClick={stopSimulation}
+              className="flex-1 flex items-center justify-center gap-2.5 px-4 py-3 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors shadow-sm font-semibold text-[15px]"
+            >
+              <Square size={18} className="fill-current" />
+              <span>Stop</span>
+            </button>
+          )}
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-3 gap-3">
+          {/* Current Step */}
+          <div className="bg-blue-50 rounded-xl p-4 text-center">
+            <p className="text-[11px] font-bold text-blue-600 uppercase tracking-wide mb-1">
+              CURRENT STEP
+            </p>
+            <p className="text-sm font-bold text-blue-600">{currentStep}</p>
+          </div>
           
-          {/* Bank Actions */}
-          <div className="space-y-2">
-            <p className="text-sm text-gray-700 font-medium">Select a bank to modify:</p>
-            <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
-              {banks.map((bank, idx) => (
-                <div key={bank.id} className="flex items-center gap-2">
-                  <button
-                    onClick={() => setSelectedBankForAction(idx)}
-                    className="flex-1 px-3 py-2 bg-white border border-gray-300 rounded hover:bg-blue-50 text-sm"
-                  >
-                    Bank {idx + 1} (${bank.capital}M)
-                  </button>
-                  <button
-                    onClick={() => deleteBank(idx)}
-                    className="p-2 bg-red-100 text-red-600 rounded hover:bg-red-200"
-                    title="Delete Bank"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            {selectedBankForAction !== null && (
-              <div className="mt-3 p-3 bg-white border border-blue-300 rounded">
-                <p className="text-sm font-medium mb-2">Add capital to Bank {selectedBankForAction + 1}:</p>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    value={capitalAmount}
-                    onChange={(e) => setCapitalAmount(Number(e.target.value))}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded"
-                    placeholder="Amount ($M)"
-                  />
-                  <button
-                    onClick={() => addCapital(selectedBankForAction, capitalAmount)}
-                    className="flex items-center gap-1 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-                  >
-                    <DollarSign size={16} />
-                    Add
-                  </button>
-                  <button
-                    onClick={() => setSelectedBankForAction(null)}
-                    className="px-3 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
+          {/* Defaults */}
+          <div className="bg-red-50 rounded-xl p-4 text-center">
+            <p className="text-[11px] font-bold text-red-600 uppercase tracking-wide mb-1">
+              DEFAULTS
+            </p>
+            <p className="text-sm font-bold text-red-600">{stats.defaults}</p>
+          </div>
+          
+          {/* Total Capital */}
+          <div className="bg-green-50 rounded-xl p-4 text-center">
+            <p className="text-[11px] font-bold text-green-600 uppercase tracking-wide mb-1">
+              TOTAL CAPITAL
+            </p>
+            <p className="text-sm font-bold text-green-600">${stats.totalEquity}M</p>
           </div>
         </div>
-      )}
 
-      {/* Status */}
-      <div className="text-sm text-gray-600">
-        {!isRunning && <p>⚪ Ready to start</p>}
-        {isRunning && !isPaused && <p className="text-green-600">🟢 Running simulation...</p>}
-        {isRunning && isPaused && <p className="text-yellow-600">🟡 Paused - modify network above</p>}
+        {/* Paused State */}
+        {isPaused && (
+          <div className="border-2 border-yellow-400 bg-yellow-50 rounded-2xl p-4">
+            {/* Header */}
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-12 h-12 bg-yellow-500 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm">
+                <Pause size={24} className="text-white fill-current" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-bold text-amber-900 text-lg leading-tight">
+                  Simulation Paused
+                </h3>
+                <p className="text-amber-700 text-sm mt-0.5">
+                  Modify the network below
+                </p>
+              </div>
+            </div>
+            
+            {/* Bank Selection */}
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-gray-700">
+                Select a bank to modify:
+              </p>
+              
+              {/* Bank List */}
+              <div className="space-y-2.5 max-h-[280px] overflow-y-auto">
+                {banks.map((bank, idx) => (
+                  <div key={bank.id} className="flex items-center gap-2.5">
+                    <button
+                      onClick={() => setSelectedBankForAction(idx)}
+                      className={`flex-1 px-4 py-3.5 rounded-xl border-2 transition-all font-semibold text-[15px] ${
+                        selectedBankForAction === idx
+                          ? 'bg-blue-600 border-blue-600 text-white shadow-md'
+                          : 'bg-white border-gray-200 text-gray-800 hover:border-blue-300 hover:bg-blue-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span>Bank {idx + 1}</span>
+                        <span className={`text-sm ${selectedBankForAction === idx ? 'text-blue-100' : 'text-gray-500'}`}>
+                          ${bank.capital}M
+                        </span>
+                      </div>
+                    </button>
+                    
+                    <button
+                      onClick={() => deleteBank(idx)}
+                      className="p-3.5 bg-red-100 text-red-600 rounded-xl hover:bg-red-200 transition-all shadow-sm border-2 border-transparent hover:border-red-300"
+                      title="Delete Bank"
+                    >
+                      <Trash2 size={20} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Capital Addition Form */}
+              {selectedBankForAction !== null && (
+                <div className="mt-4 p-4 bg-blue-50 border-2 border-blue-300 rounded-xl">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
+                      <DollarSign size={18} className="text-white" />
+                    </div>
+                    <p className="text-sm font-semibold text-gray-800">
+                      Add capital to Bank {selectedBankForAction + 1}
+                    </p>
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      value={capitalAmount}
+                      onChange={(e) => setCapitalAmount(Number(e.target.value))}
+                      className="w-20 px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-center font-semibold"
+                      placeholder="0"
+                    />
+                    
+                    <button
+                      onClick={() => addCapital(selectedBankForAction, capitalAmount)}
+                      className="flex items-center gap-2 px-5 py-2.5 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-semibold"
+                    >
+                      <Plus size={18} />
+                      <span>Add</span>
+                    </button>
+                    
+                    <button
+                      onClick={() => setSelectedBankForAction(null)}
+                      className="px-5 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-semibold"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
