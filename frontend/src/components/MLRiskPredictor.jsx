@@ -118,30 +118,31 @@ const MLRiskPredictor = ({ bank, marketState = {} }) => {
   }
 
   return (
-    <div className="bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 border-2 border-purple-300 rounded-xl p-4 relative overflow-hidden">
-      {/* Live indicator */}
-      {isLive && (
-        <div className="absolute top-2 right-2 flex items-center gap-1 bg-green-500 text-white text-xs px-2 py-1 rounded-full animate-pulse">
-          <span className="w-2 h-2 bg-white rounded-full"></span>
-          LIVE
-        </div>
-      )}
-
-      {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
-          <span className="text-xl">🤖</span>
-          <span>AI Risk Prediction</span>
-          <span className="text-xs bg-purple-600 text-white px-2 py-0.5 rounded-full">XGBoost ML</span>
-        </h3>
-        <button
-          onClick={fetchRiskPrediction}
-          disabled={loading}
-          className="px-2 py-1 bg-purple-600 text-white text-xs rounded hover:bg-purple-700 disabled:opacity-50"
-        >
-          {loading ? '⏳' : '🔄'} Refresh
-        </button>
-      </div>
+<div className="relative overflow-hidden bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 border-2 border-purple-300 rounded-xl p-4">
+  
+{/* Header */} 
+<div className="flex items-center justify-between mb-3">
+  <div className="flex items-center gap-2">
+    <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
+      <span className="text-xl">🤖</span>
+      <span>AI Risk Prediction</span>
+      <span className="text-xs bg-purple-600 text-white px-2 py-0.5 rounded-full">XGBoost ML</span>
+    </h3>
+{isLive && (
+  <div className="flex items-center gap-1 bg-green-500 text-white text-xs px-2 py-1 rounded-full animate-pulse">
+    <span className="w-2 h-2 bg-white rounded-full"></span>
+    LIVE
+  </div>
+)}
+  </div>
+  <button
+    onClick={fetchRiskPrediction}
+    disabled={loading}
+    className="px-2 py-1 bg-purple-600 text-white text-xs rounded hover:bg-purple-700 disabled:opacity-50"
+  >
+    {loading ? '⏳' : '🔄'} Refresh
+  </button>
+</div>
 
       {loading && (
         <div className="text-center py-8">

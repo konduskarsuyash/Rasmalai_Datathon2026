@@ -334,23 +334,24 @@ const BankDashboard = ({ bank, historicalData, transactions, onClose }) => {
   
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto">
+<div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto scrollbar-hide">
+
         {/* Header */}
-        <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6 rounded-t-2xl flex justify-between items-center">
+        <div className="sticky top-0 z-20 bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6 rounded-t-2xl flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold">{bank.name} Dashboard</h2>
+            <h2 className="text-2xl font-bold z-10">{bank.name} Dashboard</h2>
             <p className="text-blue-100 text-sm mt-1">Real-time Performance Analytics</p>
           </div>
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-white bg-opacity-20 hover:bg-opacity-30 rounded-lg transition-all"
+            className="px-4 py-2  bg-opacity-20 hover:bg-opacity-30 rounded-lg transition-all text-3xl"
           >
-            ✕ Close
+            ✕
           </button>
         </div>
         
         {/* Content */}
-        <div className="p-6 space-y-6">
+<div className="p-6 space-y-6 overflow-y-auto flex-1">
           {/* Status Banner if no data */}
           {historicalData.length === 0 && (
             <div className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-4 text-center">
