@@ -149,6 +149,42 @@ Bank4: INVEST_MARKET [PROFIT] | cash=$134 eq=$114
 
 ---
 
+## Policy Learning (NEW)
+
+Banks adapt strategies over time using **bounded rational learning**:
+
+### Reward Computation (Per-Bank, Local)
+```
+Reward = Profit - LiquidityPenalty - LeveragePenalty - ExposurePenalty
+```
+
+### What Updates:
+
+| Component | Update Mechanism | Speed |
+|-----------|------------------|-------|
+| Action Preferences | Bandit-style EMA | Fast (α=0.1) |
+| Target Ratios | Streak-triggered | Slow (α=0.02) |
+
+### Constraints (Non-Negotiable):
+- ❌ No global reward
+- ❌ No shared learning across banks
+- ❌ No backprop / training epochs
+- ❌ No future reward lookahead
+
+### 10-Step Simulation Loop:
+1. Observe local state
+2. ML proposes action
+3. Featherless sets priority
+4. Execute action
+5. Log transaction
+6. Markets update
+7. Check defaults
+8. Propagate cascades
+9. **Compute reward** ← NEW
+10. **Update policy & targets** ← NEW
+
+---
+
 ## For Judges
 
 **Key Differentiators:**
@@ -157,3 +193,4 @@ Bank4: INVEST_MARKET [PROFIT] | cash=$134 eq=$114
 3. "Every transaction auditable with reason and priority"
 4. "Cascades emerge naturally from balance sheet contagion"
 5. "Banks only see local information - no global omniscience"
+6. "Bounded rational learning - banks adapt from rewards"

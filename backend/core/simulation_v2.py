@@ -1,6 +1,7 @@
 """
 Simulation Engine v2 for Financial Network MVP.
 Strict loop order as per spec - DO NOT REORDER.
+Now includes Steps 9-10: Reward computation and Policy learning.
 """
 import random
 from typing import List, Dict, Optional, Callable
@@ -11,8 +12,10 @@ from .market import MarketSystem, create_default_markets
 from .transaction import GLOBAL_LEDGER, TransactionType
 from .balance_sheet import BalanceSheet
 
-# Import ML policy (uses string-based action matching)
+# Import ML modules
 from ml.policy import select_action
+from ml.reward import compute_reward, reward_summary
+from ml.learning import update_policy, adapt_targets, learning_summary
 
 
 @dataclass
@@ -117,6 +120,9 @@ def run_simulation_v2(
         # ============================================================
         # STEP 1-5: Process each active bank
         # ============================================================
+        bank_states_before = {}  # Track state BEFORE action for reward
+        bank_actions_taken = {}  # Track actions for learning
+        
         for bank in state.banks:
             if bank.is_defaulted:
                 continue
@@ -124,6 +130,9 @@ def run_simulation_v2(
             # STEP 1: Bank observes local state
             neighbor_defaults = _count_neighbor_defaults(bank, state.banks)
             observation = bank.observe_local_state(neighbor_defaults)
+            
+            # Store state BEFORE action (for reward computation)
+            bank_states_before[bank.bank_id] = observation.copy()
             
             # STEP 2: ML policy proposes action
             priority = None
@@ -161,6 +170,13 @@ def run_simulation_v2(
                 market_flows[market_id] += config.investment_amount
             elif action == BankAction.DIVEST_MARKET:
                 market_flows[market_id] -= config.investment_amount
+            
+            # Track action for learning step
+            bank_actions_taken[bank.bank_id] = {
+                "action": action.value,
+                "priority": priority.value if priority else None,
+                "neighbor_defaults": neighbor_defaults
+            }
             
             # Log bank action
             step_log["actions"].append({
@@ -233,6 +249,70 @@ def run_simulation_v2(
                 })
         
         step_log["defaults"] = state.defaults_this_step.copy()
+        
+        # ============================================================
+        # STEP 9: Compute reward for each bank
+        # STEP 10: Update policy & targets
+        # ============================================================
+        learning_logs = []
+        for bank in state.banks:
+            if bank.is_defaulted:
+                continue
+            
+            if bank.bank_id not in bank_states_before:
+                continue
+            
+            # Get state after all effects
+            state_after = bank.observe_local_state(_count_neighbor_defaults(bank, state.banks))
+            state_before = bank_states_before[bank.bank_id]
+            action_info = bank_actions_taken.get(bank.bank_id, {})
+            
+            # STEP 9: Compute reward (LOCAL, per-bank)
+            reward_result = compute_reward(
+                bank_state_before=state_before,
+                bank_state_after=state_after,
+                action_taken=action_info.get("action", "HOARD_CASH"),
+                neighbor_defaults=action_info.get("neighbor_defaults", 0)
+            )
+            reward = reward_result["total"]
+            bank.last_reward = reward
+            
+            # STEP 10: Update policy preferences
+            policy_update = update_policy(
+                state=bank.learning_state,
+                action_taken=action_info.get("action", "HOARD_CASH"),
+                reward=reward
+            )
+            
+            # STEP 10b: Adapt targets (slow)
+            target_update = adapt_targets(
+                state=bank.learning_state,
+                reward=reward,
+                liquidity_ratio=state_after.get("liquidity_ratio", 0.5)
+            )
+            
+            # Apply target adjustments
+            bank.targets.target_liquidity += target_update["liquidity_delta"]
+            bank.targets.target_leverage += target_update["leverage_delta"]
+            
+            # Log learning
+            learning_logs.append({
+                "bank_id": bank.bank_id,
+                "reward": reward,
+                "policy_update": policy_update["summary"],
+                "target_update": target_update["summary"]
+            })
+            
+            # Verbose output for learning (show more often for explainability)
+            if config.verbose and (
+                abs(reward) > 0.5  # Show for significant rewards
+                or target_update["adjustments"]  # Or target changes
+                or bank.bank_id < 3  # Always show first 3 banks
+            ):
+                summary = learning_summary(policy_update, target_update, reward)
+                print(f"    🧠 Bank{bank.bank_id}: {summary}")
+        
+        step_log["learning"] = learning_logs
         
         # Record metrics
         total_defaults = sum(1 for b in state.banks if b.is_defaulted)

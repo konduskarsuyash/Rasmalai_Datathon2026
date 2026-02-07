@@ -48,6 +48,7 @@ class Bank:
     - Operates toward target ratios
     - Only sees local state (own balance + neighbor defaults)
     - Every action produces a transaction log
+    - Learns from rewards (bounded rational learning)
     """
     bank_id: int
     name: str = ""
@@ -56,15 +57,23 @@ class Bank:
     balance_sheet: BalanceSheet = field(default_factory=BalanceSheet)
     targets: BankTargets = field(default_factory=BankTargets)
     
+    # Learning state (per-bank, independent)
+    learning_state: "LearningState" = None  # Initialized in __post_init__
+    
     # Tracking
     is_defaulted: bool = False
     action_history: List[Dict] = field(default_factory=list)
     last_action: Optional[BankAction] = None
     last_priority: Optional[StrategicPriority] = None
+    last_reward: float = 0.0
     
     def __post_init__(self):
         if not self.name:
             self.name = f"Bank_{self.bank_id}"
+        # Initialize learning state
+        if self.learning_state is None:
+            from ml.learning import LearningState
+            self.learning_state = LearningState()
     
     def observe_local_state(self, neighbor_defaults: int = 0) -> Dict:
         """
@@ -306,21 +315,33 @@ def create_banks(num_banks: int, randomize: bool = True) -> List[Bank]:
         
         if bank_type == 0:  # Large, stable bank
             cash = random.uniform(150, 200)
-            borrowed = random.uniform(30, 50)
-            investments = random.uniform(0, 10)
+            investments = random.uniform(10, 30)
+            target_leverage = 2.0
         elif bank_type == 1:  # Medium bank
             cash = random.uniform(80, 120)
-            borrowed = random.uniform(50, 70)
-            investments = random.uniform(10, 30)
+            investments = random.uniform(20, 40)
+            target_leverage = 3.0
         elif bank_type == 2:  # Small, fragile bank
-            cash = random.uniform(30, 60)
-            borrowed = random.uniform(20, 40)
-            investments = random.uniform(0, 15)
+            cash = random.uniform(40, 70)
+            investments = random.uniform(5, 20)
+            target_leverage = 2.5
         else:  # Aggressive, high-leverage bank
-            cash = random.uniform(60, 90)
-            borrowed = random.uniform(80, 120)
-            investments = random.uniform(30, 50)
+            cash = random.uniform(70, 100)
+            investments = random.uniform(40, 60)
+            target_leverage = 4.0  # Slightly lower initial leverage to be safe
         
+        # Calculate borrowed amount to hit target leverage initially
+        # Leverage = Assets / Equity
+        # Equity = Assets - Borrowed
+        # Borrowed = Assets * (1 - 1/Leverage)
+        total_assets = cash + investments
+        borrowed = total_assets * (1 - 1/target_leverage)
+        
+        # Add some noise to borrowed amount (+/- 5%) but ensure equity > 5
+        borrowed *= random.uniform(0.95, 1.05)
+        if total_assets - borrowed < 5:
+            borrowed = total_assets - 5
+            
         balance_sheet = BalanceSheet(
             cash=cash,
             investments=investments,
