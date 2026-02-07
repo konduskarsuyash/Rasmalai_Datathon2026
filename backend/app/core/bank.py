@@ -205,13 +205,24 @@ def create_banks(num_banks: int, randomize: bool = True, bank_configs: Optional[
         # Check if we have a specific config for this bank
         if bank_configs and i < len(bank_configs):
             config = bank_configs[i]
-            # Use capital to derive initial balance sheet
-            # Liquidity is a percentage of capital based on target leverage
-            cash = config.initial_capital / config.target_leverage
-            # Borrowed amount based on target leverage
-            borrowed = config.initial_capital * (config.target_leverage - 1) / config.target_leverage
-            # Initial small investments
-            investments = config.initial_capital * 0.1
+            # Initialize with proper leverage
+            # equity = config.initial_capital
+            # target_leverage = total_assets / equity
+            # Therefore: total_assets = equity * target_leverage
+            
+            equity = config.initial_capital
+            target_leverage = max(1.0, config.target_leverage)  # At least 1x
+            total_assets = equity * target_leverage
+            
+            # Distribute assets
+            cash = total_assets * 0.5  # 50% cash
+            investments = total_assets * 0.3  # 30% investments
+            loans_given = total_assets * 0.2  # 20% loans
+            
+            # Calculate borrowed to maintain equity
+            # equity = total_assets - borrowed
+            # borrowed = total_assets - equity
+            borrowed = total_assets - equity
             
             # Map risk factor to targets (lower risk = more conservative)
             if config.risk_factor < 0.3:
@@ -236,7 +247,7 @@ def create_banks(num_banks: int, randomize: bool = True, bank_configs: Optional[
                     target_market_exposure=0.2
                 )
                 
-            bs = BalanceSheet(cash=cash, investments=investments, loans_given=0.0, borrowed=borrowed)
+            bs = BalanceSheet(cash=cash, investments=investments, loans_given=loans_given, borrowed=borrowed)
             bank = Bank(bank_id=i, balance_sheet=bs, targets=targets)
             banks.append(bank)
         else:

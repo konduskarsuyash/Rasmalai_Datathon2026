@@ -48,8 +48,16 @@ const BackendSimulationPanel = ({ institutions, connections, onTransactionEvent 
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        alert(`Failed to start simulation: ${error.detail}`);
+        const errorText = await response.text();
+        console.error('Backend error:', response.status, errorText);
+        let errorDetail = errorText;
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorDetail = errorJson.detail || errorText;
+        } catch (e) {
+          // Not JSON, use text as-is
+        }
+        alert(`Failed to start simulation: ${errorDetail}`);
         setIsRunning(false);
         return;
       }
@@ -61,27 +69,34 @@ const BackendSimulationPanel = ({ institutions, connections, onTransactionEvent 
       const readStream = async () => {
         let buffer = '';
         
+        console.log('Starting SSE stream reading...');
+        
         while (true) {
           const { done, value } = await reader.read();
           
           if (done) {
+            console.log('Stream completed');
             setIsRunning(false);
             break;
           }
           
           buffer += decoder.decode(value, { stream: true });
+          console.log('Received chunk, buffer length:', buffer.length);
           
           // Process complete SSE messages
           const messages = buffer.split('\n\n');
           buffer = messages.pop() || ''; // Keep incomplete message
           
+          console.log('Processing', messages.length, 'messages');
+          
           for (const message of messages) {
             if (message.startsWith('data: ')) {
               try {
                 const data = JSON.parse(message.substring(6));
+                console.log('Received event:', data.type, data);
                 handleEvent(data);
               } catch (err) {
-                console.error('Failed to parse SSE data:', err);
+                console.error('Failed to parse SSE data:', err, message);
               }
             }
           }
@@ -96,24 +111,10 @@ const BackendSimulationPanel = ({ institutions, connections, onTransactionEvent 
       // Store reader for cleanup
       readerRef.current = reader;
 
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          handleEvent(data);
-        } catch (err) {
-          console.error('Failed to parse SSE data:', err);
-        }
-      };
-
-      eventSource.onerror = () => {
-        console.error('SSE connection error');
-        setIsRunning(false);
-        eventSource.close();
-      };
-
     } catch (error) {
       console.error('Failed to start simulation:', error);
-      alert('Failed to start simulation');
+      alert(`Failed to start simulation: ${error.message || error}`);
+      setIsRunning(false);
     }
   };
 
@@ -147,6 +148,14 @@ const BackendSimulationPanel = ({ institutions, connections, onTransactionEvent 
         break;
 
       case 'profit_booking':
+        if (onTransactionEvent) {
+          onTransactionEvent(event);
+        }
+        break;
+
+      case 'interest_payment':
+      case 'loan_repayment':
+        setStats(prev => ({ ...prev, activeTransactions: prev.activeTransactions + 1 }));
         if (onTransactionEvent) {
           onTransactionEvent(event);
         }

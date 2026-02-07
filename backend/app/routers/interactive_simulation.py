@@ -56,6 +56,8 @@ async def interactive_simulation_generator(config: SimulationConfig, control_que
     state.markets = create_default_markets()
     _create_interbank_network(state.banks, connection_density=config.connection_density)
     
+    print(f"[INTERACTIVE SIM] Initialized with {len(state.banks)} banks")
+    
     # Store in global state
     ACTIVE_SIMULATION["state"] = state
     ACTIVE_SIMULATION["is_running"] = True
@@ -93,8 +95,12 @@ async def interactive_simulation_generator(config: SimulationConfig, control_que
     
     yield f"data: {json.dumps({'type': 'init', 'banks': initial_banks, 'markets': initial_markets, 'connections': initial_connections})}\n\n"
     
+    print(f"[INTERACTIVE SIM] Sent init event with {len(initial_banks)} banks, {len(initial_markets)} markets")
+    
     # Run simulation step by step
     for t in range(config.num_steps):
+        print(f"[INTERACTIVE SIM] Starting step {t}")
+        
         # Check for pause
         while ACTIVE_SIMULATION["is_paused"]:
             yield f"data: {json.dumps({'type': 'paused', 'step': t})}\n\n"
@@ -192,6 +198,8 @@ async def interactive_simulation_generator(config: SimulationConfig, control_que
             yield f"data: {json.dumps(transaction_event)}\n\n"
             await asyncio.sleep(0.4)
         
+        print(f"[INTERACTIVE SIM] Processed {len([b for b in state.banks if not b.is_defaulted])} banks at step {t}")
+        
         # Book profits from investments (every 5 steps)
         if t % 5 == 0:
             for bank in state.banks:
@@ -205,6 +213,54 @@ async def interactive_simulation_generator(config: SimulationConfig, control_que
                             "profit": round(profit, 2),
                         }
                         yield f"data: {json.dumps(profit_event)}\n\n"
+        
+        # Process loan interest and repayments
+        for lender in state.banks:
+            if lender.is_defaulted:
+                continue
+            
+            for borrower_id, loan_amount in list(lender.balance_sheet.loan_positions.items()):
+                if loan_amount <= 0:
+                    continue
+                    
+                borrower = next((b for b in state.banks if b.bank_id == borrower_id), None)
+                if not borrower or borrower.is_defaulted:
+                    continue
+                
+                # Interest payment (5% per step on outstanding loan)
+                interest = loan_amount * 0.05
+                if borrower.balance_sheet.cash >= interest:
+                    borrower.balance_sheet.cash -= interest
+                    lender.balance_sheet.cash += interest
+                    
+                    interest_event = {
+                        "type": "interest_payment",
+                        "step": t,
+                        "from_bank": borrower_id,
+                        "to_bank": lender.bank_id,
+                        "amount": round(interest, 2),
+                        "loan_balance": round(loan_amount, 2),
+                    }
+                    yield f"data: {json.dumps(interest_event)}\n\n"
+                
+                # Loan repayment (10% of principal per step)
+                repayment = min(loan_amount * 0.1, borrower.balance_sheet.cash * 0.3)
+                if repayment > 0:
+                    borrower.balance_sheet.cash -= repayment
+                    borrower.balance_sheet.borrowed -= repayment
+                    lender.balance_sheet.cash += repayment
+                    lender.balance_sheet.loans_given -= repayment
+                    lender.balance_sheet.loan_positions[borrower_id] -= repayment
+                    
+                    repayment_event = {
+                        "type": "loan_repayment",
+                        "step": t,
+                        "from_bank": borrower_id,
+                        "to_bank": lender.bank_id,
+                        "amount": round(repayment, 2),
+                        "remaining_balance": round(loan_amount - repayment, 2),
+                    }
+                    yield f"data: {json.dumps(repayment_event)}\n\n"
         
         # Check for defaults
         new_defaults = []
@@ -271,6 +327,8 @@ async def interactive_simulation_generator(config: SimulationConfig, control_que
         }
         yield f"data: {json.dumps(step_summary)}\n\n"
         
+        print(f"[INTERACTIVE SIM] Completed step {t}, defaults: {total_defaults}/{config.num_banks}")
+        
         if total_defaults >= config.num_banks:
             break
     
@@ -285,6 +343,7 @@ async def interactive_simulation_generator(config: SimulationConfig, control_que
         "surviving_banks": sum(1 for b in state.banks if not b.is_defaulted),
     }
     yield f"data: {json.dumps(final_summary)}\n\n"
+    print(f"[INTERACTIVE SIM] Simulation complete")
 
 
 @router.post("/start")
@@ -294,7 +353,13 @@ async def start_interactive_simulation(
 ):
     """Start an interactive simulation with pause/resume/modify capabilities."""
     if ACTIVE_SIMULATION["is_running"]:
-        raise HTTPException(status_code=409, detail="Simulation already running")
+        # Force cleanup if stuck
+        print("[INTERACTIVE SIM] Force stopping stuck simulation")
+        ACTIVE_SIMULATION["is_running"] = False
+        ACTIVE_SIMULATION["is_paused"] = False
+        ACTIVE_SIMULATION["state"] = None
+        # Wait a moment for cleanup
+        await asyncio.sleep(0.5)
     
     # Convert node parameters to BankConfig
     bank_configs = None
