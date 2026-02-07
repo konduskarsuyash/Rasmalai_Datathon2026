@@ -320,17 +320,19 @@ const FinancialNetworkPlayground = () => {
   };
 
   const handleAddInstitution = (type) => {
-    const newId = `${type}${institutions.length + 1}`;
+    const bankCount = institutions.filter(i => i.type === 'bank' && !i.isMarket).length;
+    const newId = `bank${bankCount + 1}`;
     const newInst = {
       id: newId,
       type,
-      name: `New ${type.charAt(0).toUpperCase() + type.slice(1)} ${institutions.length + 1}`,
+      name: `Bank ${bankCount + 1}`,
       position: { x: Math.random() * 600 + 50, y: Math.random() * 400 + 50 },
-      capital: 500,
+      capital: 100,
       target: 3.0,
-      risk: 0.2,
+      risk: 0.3,
     };
     setInstitutions((prev) => [...prev, newInst]);
+    setSelectedInstitution(newInst);
   };
 
   const handleAddConnection = (source, target, type, exposure) => {
@@ -362,6 +364,10 @@ const FinancialNetworkPlayground = () => {
     setInstitutions((prev) =>
       prev.map((i) => (i.id === id ? { ...i, ...updates } : i)),
     );
+    // Also update selected institution if it's the one being updated
+    if (selectedInstitution?.id === id) {
+      setSelectedInstitution(prev => prev ? { ...prev, ...updates } : null);
+    }
   };
 
   const resetSimulation = () => {
@@ -438,6 +444,8 @@ const FinancialNetworkPlayground = () => {
   };
 
   const handleTransactionEvent = (event) => {
+    console.log('[FinancialNetworkPlayground] Received event:', event.type);
+    
     if (event.type === 'init') {
       // Initialize connections from backend
       setRealtimeConnections(event.connections);
@@ -446,9 +454,11 @@ const FinancialNetworkPlayground = () => {
       setAllTransactions([]);
       setCurrentSimulationStep(0);
       setIsSimulationRunning(true);
+      console.log('[FinancialNetworkPlayground] Simulation initialized');
     } else if (event.type === 'step_start') {
       // Update current step
       setCurrentSimulationStep(event.step);
+      console.log('[FinancialNetworkPlayground] Step started:', event.step);
     } else if (event.type === 'transaction') {
       // Store transaction for dashboard
       setAllTransactions((prev) => [
@@ -559,18 +569,24 @@ const FinancialNetworkPlayground = () => {
       }
     } else if (event.type === 'step_end') {
       // Store step data for historical analysis
-      setHistoricalData((prev) => [
-        ...prev,
-        {
-          step: event.step,
-          total_defaults: event.total_defaults,
-          total_equity: event.total_equity,
-          bank_states: event.bank_states,
-          market_states: event.market_states,
-        },
-      ]);
+      console.log('[FinancialNetworkPlayground] Step ended:', event.step, 'Bank states:', event.bank_states?.length);
+      setHistoricalData((prev) => {
+        const updated = [
+          ...prev,
+          {
+            step: event.step,
+            total_defaults: event.total_defaults,
+            total_equity: event.total_equity,
+            bank_states: event.bank_states,
+            market_states: event.market_states,
+          },
+        ];
+        console.log('[FinancialNetworkPlayground] Historical data updated, total steps:', updated.length);
+        return updated;
+      });
     } else if (event.type === 'complete') {
       setIsSimulationRunning(false);
+      console.log('[FinancialNetworkPlayground] Simulation completed');
     }
   };
 
@@ -585,17 +601,22 @@ const FinancialNetworkPlayground = () => {
   };
 
   const handleInstitutionClickDuringSimulation = (institution) => {
+    console.log('[FinancialNetworkPlayground] Institution clicked:', institution.name, 'Historical data points:', historicalData.length);
+    
     // Only show dashboard if simulation has data
     if (historicalData.length === 0 && !isSimulationRunning) {
       // No simulation data yet, just select normally
       setSelectedInstitution(institution);
+      console.log('[FinancialNetworkPlayground] No historical data, selecting institution normally');
       return;
     }
 
     // Show dashboard for banks or markets
     if (institution.isMarket || institution.type === 'market') {
+      console.log('[FinancialNetworkPlayground] Opening market dashboard for:', institution.id);
       setActiveDashboard({ type: 'market', id: institution.id });
     } else if (institution.type === 'bank') {
+      console.log('[FinancialNetworkPlayground] Opening bank dashboard for:', institution.id);
       setActiveDashboard({ type: 'bank', id: institution.id });
     }
   };

@@ -25,8 +25,10 @@ const BackendSimulationPanel = ({ institutions, connections, onTransactionEvent 
         .map(inst => ({
           initial_capital: inst.capital || 100,
           target_leverage: inst.target || 3.0,
-          risk_factor: inst.risk || 0.2,
+          risk_factor: inst.risk || 0.3,
         }));
+      
+      console.log('[BackendSimulationPanel] Starting simulation with node parameters:', nodeParameters);
 
       const payload = {
         num_banks: nodeParameters.length || 5,
@@ -35,6 +37,8 @@ const BackendSimulationPanel = ({ institutions, connections, onTransactionEvent 
         connection_density: 0.2,
         use_featherless: false,
       };
+      
+      console.log('[BackendSimulationPanel] Simulation payload:', payload);
 
       setIsRunning(true);
       setIsPaused(false);

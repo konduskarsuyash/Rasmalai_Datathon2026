@@ -94,11 +94,11 @@ const InstitutionPanel = ({ institution, onUpdate, onRemove, connections }) => {
             min="10"
             max="1000"
             value={institution.capital}
-            onChange={(e) =>
-              onUpdate(institution.id, {
-                capital: parseFloat(e.target.value) || 100,
-              })
-            }
+            onChange={(e) => {
+              const newValue = parseFloat(e.target.value) || 100;
+              console.log('[InstitutionPanel] Updating capital:', institution.id, 'from', institution.capital, 'to', newValue);
+              onUpdate(institution.id, { capital: newValue });
+            }}
             className="w-full px-4 py-3 bg-white border-2 border-blue-300 text-gray-800 rounded-lg text-lg font-bold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
           />
           <p className="text-xs text-blue-700 mt-1">
@@ -116,11 +116,11 @@ const InstitutionPanel = ({ institution, onUpdate, onRemove, connections }) => {
             max="10"
             step="0.1"
             value={institution.target || 3.0}
-            onChange={(e) =>
-              onUpdate(institution.id, {
-                target: parseFloat(e.target.value) || 3.0,
-              })
-            }
+            onChange={(e) => {
+              const newValue = parseFloat(e.target.value) || 3.0;
+              console.log('[InstitutionPanel] Updating target leverage:', institution.id, 'from', institution.target, 'to', newValue);
+              onUpdate(institution.id, { target: newValue });
+            }}
             className="w-full px-4 py-3 bg-white border-2 border-green-300 text-gray-800 rounded-lg text-lg font-bold focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
           />
           <p className="text-xs text-green-700 mt-1">
@@ -138,9 +138,11 @@ const InstitutionPanel = ({ institution, onUpdate, onRemove, connections }) => {
             max="1"
             step="0.05"
             value={institution.risk}
-            onChange={(e) =>
-              onUpdate(institution.id, { risk: parseFloat(e.target.value) })
-            }
+            onChange={(e) => {
+              const newValue = parseFloat(e.target.value);
+              console.log('[InstitutionPanel] Updating risk:', institution.id, 'from', institution.risk, 'to', newValue);
+              onUpdate(institution.id, { risk: newValue });
+            }}
             className="w-full h-3 bg-gradient-to-r from-green-400 via-yellow-400 to-red-500 rounded-lg appearance-none cursor-pointer"
           />
           <div className="flex justify-between text-xs text-orange-700 font-bold mt-2">

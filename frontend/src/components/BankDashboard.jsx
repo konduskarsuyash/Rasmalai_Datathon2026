@@ -14,15 +14,31 @@ const BankDashboard = ({ bank, historicalData, transactions, onClose }) => {
   const bankNumericId = typeof bank.id === 'string' 
     ? parseInt(bank.id.replace('bank', '')) - 1 
     : bank.id;
+  
+  console.log('Bank numeric ID calculated:', bankNumericId, 'from original ID:', bank.id);
+  
+  // Debug: Log first historical data point
+  if (historicalData.length > 0) {
+    console.log('First historical data point:', historicalData[0]);
+    console.log('Bank states in first point:', historicalData[0].bank_states);
+  }
     
   const bankTransactions = transactions.filter(
     tx => tx.from_bank === bankNumericId || tx.to_bank === bankNumericId
   );
   
+  console.log('Filtered bank transactions:', bankTransactions.length);
+  
   // Get historical capital data for this bank
   const capitalHistory = historicalData
     .map((step, index) => {
       const bankState = step.bank_states?.find(b => b.bank_id === bankNumericId);
+      
+      // Debug first few steps
+      if (index < 3) {
+        console.log(`Step ${index}: Looking for bank_id ${bankNumericId}, found:`, bankState);
+      }
+      
       return {
         step: index,
         capital: bankState?.capital || 0,
@@ -31,9 +47,14 @@ const BankDashboard = ({ bank, historicalData, transactions, onClose }) => {
         loans_given: bankState?.loans_given || 0,
         borrowed: bankState?.borrowed || 0,
         leverage: bankState?.leverage || 0,
+        found: !!bankState,
       };
     })
     .filter(d => d.capital !== undefined);
+  
+  console.log('Capital history generated:', capitalHistory.length, 'points');
+  console.log('First capital point:', capitalHistory[0]);
+  console.log('Last capital point:', capitalHistory[capitalHistory.length - 1]);
   
   // Get current state (either from latest historical data or from bank object)
   const currentState = capitalHistory.length > 0
@@ -65,7 +86,12 @@ const BankDashboard = ({ bank, historicalData, transactions, onClose }) => {
       ctx.fillStyle = '#9ca3af';
       ctx.font = '14px system-ui';
       ctx.textAlign = 'center';
-      ctx.fillText('Waiting for simulation data...', width / 2, height / 2);
+      ctx.fillText('Waiting for simulation data...', width / 2, height / 2 - 10);
+      ctx.font = '12px system-ui';
+      ctx.fillText('Run a simulation to see historical data', width / 2, height / 2 + 10);
+      ctx.fillStyle = '#6b7280';
+      ctx.font = '11px system-ui';
+      ctx.fillText(`(Historical data points: ${historicalData.length})`, width / 2, height / 2 + 30);
       return;
     }
     
@@ -150,7 +176,7 @@ const BankDashboard = ({ bank, historicalData, transactions, onClose }) => {
     ctx.textAlign = 'left';
     ctx.fillText('Capital Over Time', padding, 25);
     
-  }, [capitalHistory]);
+  }, [capitalHistory, historicalData]);
   
   // Calculate lending/borrowing stats
   const lentAmount = bankTransactions
@@ -184,6 +210,14 @@ const BankDashboard = ({ bank, historicalData, transactions, onClose }) => {
         
         {/* Content */}
         <div className="p-6 space-y-6">
+          {/* Status Banner if no data */}
+          {historicalData.length === 0 && (
+            <div className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-4 text-center">
+              <p className="text-yellow-800 font-semibold mb-1">⚠️ No Simulation Data Yet</p>
+              <p className="text-yellow-700 text-sm">Start a simulation and wait for it to complete some steps to see live data here.</p>
+            </div>
+          )}
+          
           {/* Key Metrics Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">

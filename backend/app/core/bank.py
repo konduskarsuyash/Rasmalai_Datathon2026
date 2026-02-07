@@ -77,7 +77,8 @@ class Bank:
     ) -> Optional[Transaction]:
         if self.is_defaulted:
             return None
-        amount = max(0, min(amount, self.balance_sheet.cash * 0.3))
+        # Allow banks to use more cash for actions (up to 50% instead of 30%)
+        amount = max(0, min(amount, self.balance_sheet.cash * 0.5))
         transaction = None
 
         if action == BankAction.INCREASE_LENDING:
