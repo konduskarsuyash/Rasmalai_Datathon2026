@@ -58,12 +58,22 @@ async def get_current_user(session_data: dict = Depends(verify_clerk_token)):
 # Optional: For routes that don't require authentication
 async def get_optional_user(credentials: Optional[HTTPAuthorizationCredentials] = Security(security)):
     """
-    Get user if authenticated, otherwise return None
+    Get user if authenticated, otherwise return None.
+    Returns same shape as get_current_user: {user_id, session_id, session_data}.
     """
     if not credentials:
         return None
-    
     try:
-        return await verify_clerk_token(credentials)
-    except:
+        session_data = await verify_clerk_token(credentials)
+        user_id = session_data.get("user_id") or session_data.get("sub")
+        if not user_id:
+            return None
+        return {
+            "user_id": user_id,
+            "session_id": session_data.get("id"),
+            "session_data": session_data,
+        }
+    except HTTPException:
+        raise
+    except Exception:
         return None
