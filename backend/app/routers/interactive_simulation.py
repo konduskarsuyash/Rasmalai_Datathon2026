@@ -36,7 +36,8 @@ class InteractiveSimulationRequest(BaseModel):
     num_steps: int = Field(default=30, ge=1, le=200)
     node_parameters: Optional[list] = None
     connection_density: float = Field(default=0.2, ge=0, le=1)
-    use_featherless: bool = Field(default=False)
+    use_featherless: bool = Field(default=True)
+    use_game_theory: bool = Field(default=True, description="Use Nash equilibrium game theory")
 
 
 async def interactive_simulation_generator(config: SimulationConfig, control_queue: asyncio.Queue, featherless_fn):
@@ -520,6 +521,7 @@ async def start_interactive_simulation(
         num_banks=body.num_banks,
         num_steps=body.num_steps,
         use_featherless=body.use_featherless,
+        use_game_theory=body.use_game_theory,
         verbose=False,
         lending_amount=15.0,
         investment_amount=15.0,

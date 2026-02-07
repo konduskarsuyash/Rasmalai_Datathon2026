@@ -1,8 +1,23 @@
 """
 ML Policy for Financial Network MVP v2.
+Integrates Game-Theoretic Nash Equilibrium decision making and ML-based Risk Assessment
 """
 from typing import Dict, Optional
 from enum import Enum
+
+# Import Nash equilibrium game theory engine
+try:
+    from .game_theory import get_nash_equilibrium_action, GameAction as GTGameAction
+    GAME_THEORY_AVAILABLE = True
+except ImportError:
+    GAME_THEORY_AVAILABLE = False
+
+# Import risk assessment
+try:
+    from .risk_models import assess_lending_risk, RiskLevel
+    RISK_ASSESSMENT_AVAILABLE = True
+except ImportError:
+    RISK_ASSESSMENT_AVAILABLE = False
 
 
 class BankAction(Enum):
@@ -21,9 +36,84 @@ class StrategicPriority(Enum):
 
 class MLPolicy:
     def __init__(self, model_type: str = "rule_based"):
+        """
+        Initialize policy
+        
+        Args:
+            model_type: "rule_based" (heuristics) or "game_theory" (Nash equilibrium)
+        """
         self.model_type = model_type
+        self.use_game_theory = (model_type == "game_theory" and GAME_THEORY_AVAILABLE)
+        
+        if model_type == "game_theory" and not GAME_THEORY_AVAILABLE:
+            print("Warning: Game theory requested but not available. Falling back to rule_based.")
+            self.use_game_theory = False
 
-    def select_action(self, observation: Dict, priority_value: Optional[str] = None) -> BankAction:
+    def select_action(self, observation: Dict, priority_value: Optional[str] = None, 
+                     network_default_rate: float = 0.0) -> BankAction:
+        """
+        Select action using either game theory (Nash equilibrium) or heuristics
+        
+        Args:
+            observation: Bank's state observation
+            priority_value: Strategic priority (PROFIT, LIQUIDITY, STABILITY)
+            network_default_rate: System-wide default rate for game theory
+            
+        Returns:
+            BankAction to execute
+        """
+        
+        # === GAME THEORY MODE: Nash Equilibrium ===
+        if self.use_game_theory:
+            return self._select_action_game_theoretic(observation, priority_value, network_default_rate)
+        
+        # === HEURISTIC MODE: Rule-based ===
+        return self._select_action_heuristic(observation, priority_value)
+    
+    def _select_action_game_theoretic(self, observation: Dict, priority_value: Optional[str],
+                                     network_default_rate: float) -> BankAction:
+        """
+        Game-theoretic decision using Nash equilibrium best response
+        """
+        cash = observation.get("cash", 100)
+        equity = observation.get("equity", 50)
+        market_exposure = observation.get("market_exposure", 0.0)
+        liquidity_ratio = observation.get("liquidity_ratio", 0.5)
+        
+        # Get Nash equilibrium action (LEND or HOARD)
+        gt_action, reasoning = get_nash_equilibrium_action(observation, network_default_rate)
+        
+        # Map game theory action to bank actions
+        if gt_action.value == "LEND":
+            # Nash equilibrium says LEND
+            # Decide HOW to lend based on portfolio
+            if cash > 50 and liquidity_ratio > 0.3:
+                # Strong position - diversify
+                if market_exposure < 0.2:
+                    return BankAction.INVEST_MARKET  # Lend to market
+                else:
+                    return BankAction.INCREASE_LENDING  # Lend to banks
+            elif cash > 30:
+                # Moderate position - prefer interbank lending
+                return BankAction.INCREASE_LENDING
+            else:
+                # Weak position - just maintain current
+                return BankAction.HOARD_CASH
+        
+        else:  # gt_action == HOARD
+            # Nash equilibrium says HOARD
+            # Liquidate positions and preserve cash
+            if market_exposure > 0.05:
+                return BankAction.DIVEST_MARKET  # Exit market positions
+            elif liquidity_ratio < 0.25:
+                return BankAction.DECREASE_LENDING  # Reduce lending
+            else:
+                return BankAction.HOARD_CASH  # Pure hoarding
+    
+    def _select_action_heuristic(self, observation: Dict, priority_value: Optional[str]) -> BankAction:
+        """
+        Original heuristic-based decision making
+        """
         bank_id = observation.get("bank_id", 0)
         cash = observation.get("cash", 100)
         equity = observation.get("equity", 50)
@@ -67,74 +157,30 @@ class MLPolicy:
         if equity < 30:
             return BankAction.HOARD_CASH
         
-        # Game theory: Opportunistic trading based on bank characteristics
-        import random
-        
-        # More aggressive cash management - divest when cash gets low
-        if cash < 40 and market_exposure > 0.05:
-            return BankAction.DIVEST_MARKET  # Need liquidity urgently
-        
-        # Profit-taking behavior: divest when heavily exposed (realize gains)
-        if market_exposure > 0.25 and random.random() < 0.5:
-            return BankAction.DIVEST_MARKET  # Take profits when overexposed
-        
-        # Periodic profit realization: even with good cash, sometimes divest to lock in gains
-        if cash > 50 and market_exposure > 0.15 and random.random() < 0.3:
-            return BankAction.DIVEST_MARKET  # Periodic profit-taking
-        
-        if cash > 50 and liquidity_ratio > 0.3:
-            # Diversify actions based on bank ID + randomness
-            rand_factor = random.random()
-            
-            if bank_id % 5 == 0:  # 20% of banks focus on lending
-                return BankAction.INCREASE_LENDING
-            elif bank_id % 5 == 1 or bank_id % 5 == 2:  # 40% focus on markets
-                # Contrarian strategy: mix of investing and divesting
-                if market_exposure > 0.18 and rand_factor < 0.55:  # Increased from 0.4
-                    return BankAction.DIVEST_MARKET  # Take profits
-                elif market_exposure < 0.25:
-                    return BankAction.INVEST_MARKET
-                return BankAction.INCREASE_LENDING
-            elif bank_id % 5 == 3:  # 20% balanced
-                # More balanced between investing and divesting
-                if market_exposure > 0.2 and rand_factor < 0.4:
-                    return BankAction.DIVEST_MARKET
-                elif rand_factor < 0.65:
-                    return BankAction.INVEST_MARKET
-                return BankAction.INCREASE_LENDING
-            else:  # 20% conservative
-                if market_exposure > 0.12 and rand_factor < 0.35:
-                    return BankAction.DIVEST_MARKET  # Conservative banks divest earlier
-                elif market_exposure < 0.15:
-                    return BankAction.INVEST_MARKET
-                return BankAction.HOARD_CASH
-        
-        # Need liquidity - divest if possible
-        if cash < 35:
-            if market_exposure > 0.08:
-                return BankAction.DIVEST_MARKET
-            return BankAction.DECREASE_LENDING
-
-        # Gap-based rebalancing with random element
-        gaps = {"leverage": abs(leverage_gap), "liquidity": abs(liquidity_gap), "exposure": abs(exposure_gap)}
-        priority_gap = max(gaps, key=gaps.get)
-        
-        if priority_gap == "leverage":
-            return BankAction.DECREASE_LENDING if leverage_gap > 0 else BankAction.INCREASE_LENDING
-        elif priority_gap == "liquidity":
-            # More dynamic: sometimes divest instead of just hoarding
-            if liquidity_gap > 0 and market_exposure > 0.1 and random.random() < 0.4:
-                return BankAction.DIVEST_MARKET
-            return BankAction.HOARD_CASH if liquidity_gap > 0 else BankAction.INVEST_MARKET
-        elif priority_gap == "exposure":
-            return BankAction.DIVEST_MARKET if exposure_gap > 0 else BankAction.INVEST_MARKET
-            
+        # Default opportunistic behavior
+        if cash > 80 and liquidity_ratio > 0.4:
+            return BankAction.INCREASE_LENDING
+        if cash > 60:
+            return BankAction.INVEST_MARKET
         return BankAction.HOARD_CASH
-
-    def get_action_reason(self, observation: Dict, action: BankAction, priority_value: Optional[str] = None) -> str:
+    
+    def get_action_reason(self, observation: Dict, action: BankAction,
+                         priority_value: Optional[str] = None,
+                         network_default_rate: float = 0.0) -> str:
+        """Generate reasoning string for the action"""
         cash = observation.get("cash", 100)
         equity = observation.get("equity", 50)
         leverage = observation.get("leverage", 1.0)
+        
+        if self.use_game_theory:
+            # Get game theory reasoning
+            try:
+                _, gt_reasoning = get_nash_equilibrium_action(observation, network_default_rate)
+                return gt_reasoning
+            except Exception:
+                pass
+        
+        # Heuristic reasoning
         parts = []
         if priority_value:
             parts.append(f"priority={priority_value}")
@@ -142,13 +188,53 @@ class MLPolicy:
         return f"{action.value} ({', '.join(parts)})"
 
 
-_policy = MLPolicy()
+# Global policy instances
+_policy_heuristic = MLPolicy(model_type="rule_based")
+_policy_game_theory = MLPolicy(model_type="game_theory")
+
+# Default to game theory if available
+_policy = _policy_game_theory if _policy_game_theory.use_game_theory else _policy_heuristic
 
 
-def select_action(observation: Dict, priority=None) -> tuple:
+def select_action(observation: Dict, priority=None, use_game_theory: bool = True,
+                 network_default_rate: float = 0.0) -> tuple:
+    """
+    Select action using either game theory or heuristics
+    
+    Args:
+        observation: Bank's state
+        priority: Strategic priority
+        use_game_theory: If True, use Nash equilibrium; else use heuristics
+        network_default_rate: System default rate for game theory
+        
+    Returns:
+        (action, reasoning_string)
+    """
+    # Select policy
+    policy = _policy_game_theory if (use_game_theory and GAME_THEORY_AVAILABLE) else _policy_heuristic
+    
     priority_value = None
     if priority is not None:
         priority_value = priority.value if hasattr(priority, "value") else str(priority)
-    action = _policy.select_action(observation, priority_value)
-    reason = _policy.get_action_reason(observation, action, priority_value)
+    
+    action = policy.select_action(observation, priority_value, network_default_rate)
+    reason = policy.get_action_reason(observation, action, priority_value, network_default_rate)
+    
     return action, reason
+
+
+def set_default_policy_mode(use_game_theory: bool = True):
+    """
+    Set the default policy mode globally
+    
+    Args:
+        use_game_theory: True for Nash equilibrium, False for heuristics
+    """
+    global _policy
+    if use_game_theory and GAME_THEORY_AVAILABLE:
+        _policy = _policy_game_theory
+        print("✓ Policy mode: GAME THEORY (Nash Equilibrium)")
+    else:
+        _policy = _policy_heuristic
+        print("✓ Policy mode: HEURISTIC (Rule-based)")
+

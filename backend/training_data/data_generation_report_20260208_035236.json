@@ -1,0 +1,842 @@
+{
+  "timestamp": "20260208_035236",
+  "scenarios_run": 100,
+  "data_statistics": {},
+  "scenario_results": [
+    {
+      "scenario": "healthy_low_stress_0",
+      "num_banks": 8,
+      "num_steps": 30,
+      "connection_density": 0.20429963731715037,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.05
+    },
+    {
+      "scenario": "healthy_low_stress_1",
+      "num_banks": 9,
+      "num_steps": 30,
+      "connection_density": 0.26782465282844387,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.05
+    },
+    {
+      "scenario": "healthy_low_stress_2",
+      "num_banks": 11,
+      "num_steps": 30,
+      "connection_density": 0.28180444611569655,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.05
+    },
+    {
+      "scenario": "healthy_low_stress_3",
+      "num_banks": 8,
+      "num_steps": 30,
+      "connection_density": 0.2948450589291708,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.05
+    },
+    {
+      "scenario": "healthy_low_stress_4",
+      "num_banks": 10,
+      "num_steps": 30,
+      "connection_density": 0.34139247798688543,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.05
+    },
+    {
+      "scenario": "healthy_low_stress_5",
+      "num_banks": 9,
+      "num_steps": 30,
+      "connection_density": 0.2819289118385764,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.05
+    },
+    {
+      "scenario": "healthy_low_stress_6",
+      "num_banks": 9,
+      "num_steps": 30,
+      "connection_density": 0.28378787064072597,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.05
+    },
+    {
+      "scenario": "healthy_low_stress_7",
+      "num_banks": 9,
+      "num_steps": 30,
+      "connection_density": 0.18911051420770464,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.05
+    },
+    {
+      "scenario": "healthy_low_stress_8",
+      "num_banks": 8,
+      "num_steps": 30,
+      "connection_density": 0.25389015338992593,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.05
+    },
+    {
+      "scenario": "healthy_low_stress_9",
+      "num_banks": 9,
+      "num_steps": 30,
+      "connection_density": 0.347707370615004,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.05
+    },
+    {
+      "scenario": "healthy_low_stress_10",
+      "num_banks": 12,
+      "num_steps": 30,
+      "connection_density": 0.24845264036332287,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.05
+    },
+    {
+      "scenario": "healthy_low_stress_11",
+      "num_banks": 9,
+      "num_steps": 30,
+      "connection_density": 0.31767791549512064,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.05
+    },
+    {
+      "scenario": "healthy_low_stress_12",
+      "num_banks": 9,
+      "num_steps": 30,
+      "connection_density": 0.1635072149144539,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.05
+    },
+    {
+      "scenario": "healthy_low_stress_13",
+      "num_banks": 10,
+      "num_steps": 30,
+      "connection_density": 0.3226834376439218,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.05
+    },
+    {
+      "scenario": "healthy_low_stress_14",
+      "num_banks": 8,
+      "num_steps": 30,
+      "connection_density": 0.18108679512205395,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.05
+    },
+    {
+      "scenario": "moderate_stress_0",
+      "num_banks": 14,
+      "num_steps": 35,
+      "connection_density": 0.2232564676589419,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "moderate_stress_1",
+      "num_banks": 14,
+      "num_steps": 35,
+      "connection_density": 0.3189805119008262,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "moderate_stress_2",
+      "num_banks": 15,
+      "num_steps": 35,
+      "connection_density": 0.3300722851370417,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "moderate_stress_3",
+      "num_banks": 12,
+      "num_steps": 35,
+      "connection_density": 0.2279840727197162,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "moderate_stress_4",
+      "num_banks": 10,
+      "num_steps": 35,
+      "connection_density": 0.24361989003252188,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "moderate_stress_5",
+      "num_banks": 14,
+      "num_steps": 35,
+      "connection_density": 0.22482953154138724,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "moderate_stress_6",
+      "num_banks": 10,
+      "num_steps": 35,
+      "connection_density": 0.3639211523556666,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "moderate_stress_7",
+      "num_banks": 15,
+      "num_steps": 35,
+      "connection_density": 0.23834069786865456,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "moderate_stress_8",
+      "num_banks": 14,
+      "num_steps": 35,
+      "connection_density": 0.3216701411755819,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "moderate_stress_9",
+      "num_banks": 14,
+      "num_steps": 35,
+      "connection_density": 0.25691733681176954,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "moderate_stress_10",
+      "num_banks": 12,
+      "num_steps": 35,
+      "connection_density": 0.34653511923105246,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "moderate_stress_11",
+      "num_banks": 14,
+      "num_steps": 35,
+      "connection_density": 0.32843977117791834,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "moderate_stress_12",
+      "num_banks": 14,
+      "num_steps": 35,
+      "connection_density": 0.32573565590870435,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "moderate_stress_13",
+      "num_banks": 12,
+      "num_steps": 35,
+      "connection_density": 0.24548638622963131,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "moderate_stress_14",
+      "num_banks": 13,
+      "num_steps": 35,
+      "connection_density": 0.22310921372809145,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "high_stress_0",
+      "num_banks": 18,
+      "num_steps": 40,
+      "connection_density": 0.30822458310671946,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.25
+    },
+    {
+      "scenario": "high_stress_1",
+      "num_banks": 14,
+      "num_steps": 40,
+      "connection_density": 0.30536715725304164,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.25
+    },
+    {
+      "scenario": "high_stress_2",
+      "num_banks": 18,
+      "num_steps": 40,
+      "connection_density": 0.48972057299334315,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.25
+    },
+    {
+      "scenario": "high_stress_3",
+      "num_banks": 16,
+      "num_steps": 40,
+      "connection_density": 0.36237889740071766,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.25
+    },
+    {
+      "scenario": "high_stress_4",
+      "error": "name 'investment_amt' is not defined"
+    },
+    {
+      "scenario": "high_stress_5",
+      "num_banks": 18,
+      "num_steps": 40,
+      "connection_density": 0.37220547098468193,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.25
+    },
+    {
+      "scenario": "high_stress_6",
+      "num_banks": 17,
+      "num_steps": 40,
+      "connection_density": 0.3035732361654991,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.25
+    },
+    {
+      "scenario": "high_stress_7",
+      "error": "name 'investment_amt' is not defined"
+    },
+    {
+      "scenario": "high_stress_8",
+      "num_banks": 12,
+      "num_steps": 40,
+      "connection_density": 0.3576434738477906,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.25
+    },
+    {
+      "scenario": "high_stress_9",
+      "num_banks": 18,
+      "num_steps": 40,
+      "connection_density": 0.44648158812546046,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.25
+    },
+    {
+      "scenario": "high_stress_10",
+      "num_banks": 13,
+      "num_steps": 40,
+      "connection_density": 0.3585381902318752,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.25
+    },
+    {
+      "scenario": "high_stress_11",
+      "error": "name 'investment_amt' is not defined"
+    },
+    {
+      "scenario": "high_stress_12",
+      "num_banks": 13,
+      "num_steps": 40,
+      "connection_density": 0.49732537291677437,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.25
+    },
+    {
+      "scenario": "high_stress_13",
+      "num_banks": 15,
+      "num_steps": 40,
+      "connection_density": 0.3872899023379493,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.25
+    },
+    {
+      "scenario": "high_stress_14",
+      "num_banks": 18,
+      "num_steps": 40,
+      "connection_density": 0.3699361455643051,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.25
+    },
+    {
+      "scenario": "dense_network_0",
+      "num_banks": 14,
+      "num_steps": 35,
+      "connection_density": 0.649255491584029,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "dense_network_1",
+      "num_banks": 11,
+      "num_steps": 35,
+      "connection_density": 0.6495352115458162,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "dense_network_2",
+      "num_banks": 11,
+      "num_steps": 35,
+      "connection_density": 0.54412144438393,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "dense_network_3",
+      "num_banks": 15,
+      "num_steps": 35,
+      "connection_density": 0.5602864804435821,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "dense_network_4",
+      "num_banks": 12,
+      "num_steps": 35,
+      "connection_density": 0.5053341243885892,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "dense_network_5",
+      "num_banks": 11,
+      "num_steps": 35,
+      "connection_density": 0.6206778978190948,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "dense_network_6",
+      "num_banks": 10,
+      "num_steps": 35,
+      "connection_density": 0.6737136910407086,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "dense_network_7",
+      "num_banks": 10,
+      "num_steps": 35,
+      "connection_density": 0.541798455026858,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "dense_network_8",
+      "num_banks": 11,
+      "num_steps": 35,
+      "connection_density": 0.5346160981101002,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "dense_network_9",
+      "num_banks": 11,
+      "num_steps": 35,
+      "connection_density": 0.6324628549127375,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "sparse_network_0",
+      "num_banks": 15,
+      "num_steps": 30,
+      "connection_density": 0.14150872152369665,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.1
+    },
+    {
+      "scenario": "sparse_network_1",
+      "num_banks": 19,
+      "num_steps": 30,
+      "connection_density": 0.14641302794981384,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.1
+    },
+    {
+      "scenario": "sparse_network_2",
+      "num_banks": 16,
+      "num_steps": 30,
+      "connection_density": 0.10363927826291056,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.1
+    },
+    {
+      "scenario": "sparse_network_3",
+      "num_banks": 20,
+      "num_steps": 30,
+      "connection_density": 0.13541553100412637,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.1
+    },
+    {
+      "scenario": "sparse_network_4",
+      "num_banks": 17,
+      "num_steps": 30,
+      "connection_density": 0.1989907786323688,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.1
+    },
+    {
+      "scenario": "sparse_network_5",
+      "num_banks": 19,
+      "num_steps": 30,
+      "connection_density": 0.19474393343768331,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.1
+    },
+    {
+      "scenario": "sparse_network_6",
+      "num_banks": 19,
+      "num_steps": 30,
+      "connection_density": 0.11099258156373966,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.1
+    },
+    {
+      "scenario": "sparse_network_7",
+      "num_banks": 17,
+      "num_steps": 30,
+      "connection_density": 0.15286301939418123,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.1
+    },
+    {
+      "scenario": "sparse_network_8",
+      "num_banks": 15,
+      "num_steps": 30,
+      "connection_density": 0.11845961986128739,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.1
+    },
+    {
+      "scenario": "sparse_network_9",
+      "num_banks": 20,
+      "num_steps": 30,
+      "connection_density": 0.11864841224435034,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.1
+    },
+    {
+      "scenario": "low_capital_0",
+      "num_banks": 12,
+      "num_steps": 35,
+      "connection_density": 0.36002617167467,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.2
+    },
+    {
+      "scenario": "low_capital_1",
+      "num_banks": 15,
+      "num_steps": 35,
+      "connection_density": 0.2713628654044421,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.2
+    },
+    {
+      "scenario": "low_capital_2",
+      "num_banks": 14,
+      "num_steps": 35,
+      "connection_density": 0.3543581751639507,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.2
+    },
+    {
+      "scenario": "low_capital_3",
+      "num_banks": 12,
+      "num_steps": 35,
+      "connection_density": 0.28971595535274325,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.2
+    },
+    {
+      "scenario": "low_capital_4",
+      "num_banks": 10,
+      "num_steps": 35,
+      "connection_density": 0.39749176114179,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.2
+    },
+    {
+      "scenario": "low_capital_5",
+      "num_banks": 15,
+      "num_steps": 35,
+      "connection_density": 0.36316052819379413,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.2
+    },
+    {
+      "scenario": "low_capital_6",
+      "num_banks": 12,
+      "num_steps": 35,
+      "connection_density": 0.2841400760780074,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.2
+    },
+    {
+      "scenario": "low_capital_7",
+      "num_banks": 11,
+      "num_steps": 35,
+      "connection_density": 0.3673664737253619,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.2
+    },
+    {
+      "scenario": "low_capital_8",
+      "num_banks": 14,
+      "num_steps": 35,
+      "connection_density": 0.2832508230751893,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.2
+    },
+    {
+      "scenario": "low_capital_9",
+      "num_banks": 11,
+      "num_steps": 35,
+      "connection_density": 0.375213769858585,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.2
+    },
+    {
+      "scenario": "high_capital_0",
+      "num_banks": 9,
+      "num_steps": 30,
+      "connection_density": 0.3287910815235912,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.1
+    },
+    {
+      "scenario": "high_capital_1",
+      "num_banks": 8,
+      "num_steps": 30,
+      "connection_density": 0.3366498477712853,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.1
+    },
+    {
+      "scenario": "high_capital_2",
+      "num_banks": 11,
+      "num_steps": 30,
+      "connection_density": 0.2701529022944358,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.1
+    },
+    {
+      "scenario": "high_capital_3",
+      "num_banks": 10,
+      "num_steps": 30,
+      "connection_density": 0.28150584355195585,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.1
+    },
+    {
+      "scenario": "high_capital_4",
+      "num_banks": 11,
+      "num_steps": 30,
+      "connection_density": 0.3418332182482034,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.1
+    },
+    {
+      "scenario": "high_capital_5",
+      "num_banks": 11,
+      "num_steps": 30,
+      "connection_density": 0.3091306683212861,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.1
+    },
+    {
+      "scenario": "high_capital_6",
+      "num_banks": 11,
+      "num_steps": 30,
+      "connection_density": 0.2931522848463348,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.1
+    },
+    {
+      "scenario": "high_capital_7",
+      "num_banks": 11,
+      "num_steps": 30,
+      "connection_density": 0.20944739152460468,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.1
+    },
+    {
+      "scenario": "high_capital_8",
+      "num_banks": 9,
+      "num_steps": 30,
+      "connection_density": 0.22481938317561964,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.1
+    },
+    {
+      "scenario": "high_capital_9",
+      "num_banks": 11,
+      "num_steps": 30,
+      "connection_density": 0.3461351313037644,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.1
+    },
+    {
+      "scenario": "extended_0",
+      "num_banks": 12,
+      "num_steps": 50,
+      "connection_density": 0.3479585863585012,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "extended_1",
+      "num_banks": 12,
+      "num_steps": 50,
+      "connection_density": 0.39768493459152177,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "extended_2",
+      "num_banks": 13,
+      "num_steps": 50,
+      "connection_density": 0.3275994754905913,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "extended_3",
+      "num_banks": 14,
+      "num_steps": 50,
+      "connection_density": 0.2858833482251831,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "extended_4",
+      "num_banks": 15,
+      "num_steps": 50,
+      "connection_density": 0.2671498859853129,
+      "num_defaults": 0,
+      "total_equity": 0,
+      "shock_probability": 0.15
+    },
+    {
+      "scenario": "heuristic_0",
+      "error": "name 'investment_amt' is not defined"
+    },
+    {
+      "scenario": "heuristic_1",
+      "error": "name 'investment_amt' is not defined"
+    },
+    {
+      "scenario": "heuristic_2",
+      "error": "name 'investment_amt' is not defined"
+    },
+    {
+      "scenario": "heuristic_3",
+      "error": "name 'investment_amt' is not defined"
+    },
+    {
+      "scenario": "heuristic_4",
+      "error": "name 'investment_amt' is not defined"
+    },
+    {
+      "scenario": "heuristic_5",
+      "error": "name 'investment_amt' is not defined"
+    },
+    {
+      "scenario": "heuristic_6",
+      "error": "name 'investment_amt' is not defined"
+    },
+    {
+      "scenario": "heuristic_7",
+      "error": "name 'investment_amt' is not defined"
+    },
+    {
+      "scenario": "heuristic_8",
+      "error": "name 'investment_amt' is not defined"
+    },
+    {
+      "scenario": "heuristic_9",
+      "error": "name 'investment_amt' is not defined"
+    }
+  ]
+}

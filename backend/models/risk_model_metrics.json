@@ -1,0 +1,25 @@
+{
+  "test_auc": 0.8299408845092916,
+  "train_accuracy": 0.846875,
+  "test_accuracy": 0.763,
+  "confusion_matrix": [
+    [
+      1063,
+      281
+    ],
+    [
+      193,
+      463
+    ]
+  ],
+  "feature_importances": {
+    "borrower_capital_ratio": 0.07796322554349899,
+    "borrower_leverage": 0.35783249139785767,
+    "borrower_liquidity_ratio": 0.12026108056306839,
+    "borrower_equity": 0.0,
+    "borrower_past_defaults": 0.1496981829404831,
+    "borrower_risk_appetite": 0.061877910047769547,
+    "market_volatility": 0.17292383313179016,
+    "lender_capital_ratio": 0.05944335088133812
+  }
+}

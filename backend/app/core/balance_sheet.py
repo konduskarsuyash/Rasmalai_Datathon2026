@@ -42,6 +42,7 @@ class BalanceSheet:
         total = max(self.total_assets, 0.01)
         return {
             "leverage": self.total_assets / equity,
+            "capital_ratio": equity / total,  # Equity / Total Assets
             "liquidity_ratio": self.cash / total,
             "market_exposure": self.investments / total,
             "loan_exposure": self.loans_given / total,

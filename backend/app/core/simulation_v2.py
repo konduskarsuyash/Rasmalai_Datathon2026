@@ -25,6 +25,7 @@ class SimulationConfig:
     num_banks: int = 20
     num_steps: int = 30
     use_featherless: bool = True
+    use_game_theory: bool = True  # Enable Nash equilibrium decision-making
     shock_probability: float = 0.1
     verbose: bool = True
     lending_amount: float = 10.0
@@ -71,6 +72,11 @@ def run_simulation_v2(config: SimulationConfig, featherless_fn: Optional[Callabl
                 continue
             neighbor_defaults = _count_neighbor_defaults(bank, state.banks)
             observation = bank.observe_local_state(neighbor_defaults)
+            
+            # Calculate network default rate for game theory
+            total_defaults = sum(1 for b in state.banks if b.is_defaulted)
+            network_default_rate = total_defaults / config.num_banks if config.num_banks > 0 else 0.0
+            
             priority = None
             if config.use_featherless and featherless_fn:
                 try:
@@ -78,7 +84,14 @@ def run_simulation_v2(config: SimulationConfig, featherless_fn: Optional[Callabl
                     bank.last_priority = priority
                 except Exception:
                     priority = None
-            ml_action, reason = select_action(observation, priority)
+            
+            # Use game theory or heuristics based on config
+            ml_action, reason = select_action(
+                observation, 
+                priority, 
+                use_game_theory=config.use_game_theory,
+                network_default_rate=network_default_rate
+            )
             action = BankAction[ml_action.value]
             counterparty_id = _select_counterparty(bank, state.banks, action)
             market_id = random.choice(["BANK_INDEX", "FIN_SERVICES"])

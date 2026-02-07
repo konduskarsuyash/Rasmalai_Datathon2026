@@ -41,6 +41,12 @@ class Bank:
     action_history: List[Dict] = field(default_factory=list)
     last_action: Optional[BankAction] = None
     last_priority: Optional[StrategicPriority] = None
+    
+    # Risk tracking features for ML
+    past_defaults: int = 0  # Number of past defaults
+    risk_appetite: float = 0.5  # 0.0 (conservative) to 1.0 (aggressive)
+    investment_volatility: float = 0.0  # Volatility of investment returns
+    default_step: Optional[int] = None  # Step when bank defaulted (if ever)
 
     def __post_init__(self):
         if not self.name:
@@ -58,12 +64,17 @@ class Bank:
             "leverage": ratios["leverage"],
             "liquidity_ratio": ratios["liquidity_ratio"],
             "market_exposure": ratios["market_exposure"],
+            "capital_ratio": ratios["capital_ratio"],
             "leverage_gap": leverage_gap,
             "liquidity_gap": liquidity_gap,
             "exposure_gap": exposure_gap,
             "neighbor_defaults": neighbor_defaults,
             "local_stress": min(1.0, neighbor_defaults / 5.0),
             "is_defaulted": self.is_defaulted,
+            # Risk assessment features
+            "past_defaults": self.past_defaults,
+            "risk_appetite": self.risk_appetite,
+            "investment_volatility": self.investment_volatility,
         }
 
     def execute_action(
@@ -152,6 +163,7 @@ class Bank:
     def check_default(self) -> bool:
         if self.balance_sheet.is_defaulted and not self.is_defaulted:
             self.is_defaulted = True
+            self.past_defaults += 1
             return True
         return False
 
@@ -194,6 +206,10 @@ class Bank:
             "is_defaulted": self.is_defaulted,
             "last_action": self.last_action.value if self.last_action else None,
             "last_priority": self.last_priority.value if self.last_priority else None,
+            # Risk metrics for frontend display
+            "past_defaults": self.past_defaults,
+            "risk_appetite": self.risk_appetite,
+            "investment_volatility": self.investment_volatility,
             "balance_sheet": self.balance_sheet.snapshot(),
         }
 

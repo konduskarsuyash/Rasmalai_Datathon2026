@@ -20,7 +20,7 @@ def test_simulation_with_node_params():
     payload_basic = {
         "num_banks": 5,
         "num_steps": 10,
-        "use_featherless": False,
+        "use_featherless": True,
         "verbose": False,
         "lending_amount": 10.0,
         "investment_amount": 10.0,
@@ -76,7 +76,7 @@ def test_simulation_with_node_params():
     payload_custom = {
         "num_banks": 3,  # Will be overridden by length of node_parameters
         "num_steps": 10,
-        "use_featherless": False,
+        "use_featherless": True,
         "verbose": False,
         "lending_amount": 10.0,  # Default, but overridden by node params
         "investment_amount": 10.0,  # Default, but overridden by node params
@@ -131,7 +131,7 @@ def test_simulation_with_node_params():
     payload_mixed = {
         "num_banks": 5,
         "num_steps": 10,
-        "use_featherless": False,
+        "use_featherless": True,
         "verbose": False,
         "lending_amount": 10.0,
         "investment_amount": 10.0,
