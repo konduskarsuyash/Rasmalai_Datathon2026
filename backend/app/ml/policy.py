@@ -52,12 +52,16 @@ class MLPolicy:
             return BankAction.DECREASE_LENDING
         if equity < 30:
             return BankAction.HOARD_CASH
-        if cash > 80 and liquidity_ratio > 0.5:
-            if bank_id % 3 == 0:
+        
+        # More aggressive market investment strategy
+        if cash > 50 and liquidity_ratio > 0.3 and market_exposure < 0.25:
+            # Diversify actions based on bank ID
+            if bank_id % 4 == 0:
                 return BankAction.INCREASE_LENDING
-            elif bank_id % 3 == 1:
+            elif bank_id % 4 == 1 or bank_id % 4 == 2:
                 return BankAction.INVEST_MARKET
             return BankAction.INCREASE_LENDING
+        
         if cash < 30:
             if market_exposure > 0.1:
                 return BankAction.DIVEST_MARKET
