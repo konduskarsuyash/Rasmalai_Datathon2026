@@ -125,6 +125,10 @@ const RealTimeSimulationPanel = ({ onResult, lastResult, institutions, onTransac
           defaults: event.total_defaults,
           equity: event.total_equity,
         });
+        // Pass step_end event to parent for dashboard data
+        if (onTransactionEvent) {
+          onTransactionEvent(event);
+        }
         break;
 
       case 'complete':

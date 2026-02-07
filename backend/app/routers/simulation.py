@@ -62,6 +62,16 @@ async def simulation_event_generator(config: SimulationConfig, featherless_fn):
         for bank in state.banks
     ]
     
+    # Send initial market states
+    initial_markets = []
+    for market_id, market in state.markets.markets.items():
+        initial_markets.append({
+            "id": market_id,
+            "name": market.name,
+            "price": market.price,
+            "total_invested": market.total_invested,
+        })
+    
     # Send initial connections
     initial_connections = []
     for bank in state.banks:
@@ -72,7 +82,7 @@ async def simulation_event_generator(config: SimulationConfig, featherless_fn):
                 "amount": amount,
             })
     
-    yield f"data: {json.dumps({'type': 'init', 'banks': initial_banks, 'connections': initial_connections})}\n\n"
+    yield f"data: {json.dumps({'type': 'init', 'banks': initial_banks, 'markets': initial_markets, 'connections': initial_connections})}\n\n"
     
     # Run simulation step by step
     for t in range(config.num_steps):
@@ -129,6 +139,7 @@ async def simulation_event_generator(config: SimulationConfig, featherless_fn):
                 "step": t,
                 "from_bank": bank.bank_id,
                 "to_bank": counterparty_id,
+                "market_id": market_id if action in [BankAction.INVEST_MARKET, BankAction.DIVEST_MARKET] else None,
                 "action": action.value,
                 "amount": amount,
                 "reason": reason,
@@ -164,15 +175,43 @@ async def simulation_event_generator(config: SimulationConfig, featherless_fn):
                 }
                 yield f"data: {json.dumps(cascade_event)}\n\n"
         
-        # Send step summary
+        # Send step summary with detailed bank states
         total_defaults = sum(1 for b in state.banks if b.is_defaulted)
         total_equity = sum(b.balance_sheet.equity for b in state.banks if not b.is_defaulted)
+        
+        # Include detailed state for each bank for dashboard visualization
+        bank_states = []
+        for bank in state.banks:
+            ratios = bank.balance_sheet.compute_ratios()
+            bank_states.append({
+                "bank_id": bank.bank_id,
+                "capital": bank.balance_sheet.equity,
+                "cash": bank.balance_sheet.cash,
+                "investments": bank.balance_sheet.investments,
+                "loans_given": bank.balance_sheet.loans_given,
+                "borrowed": bank.balance_sheet.borrowed,
+                "leverage": ratios.get("leverage", 0),
+                "is_defaulted": bank.is_defaulted,
+            })
+        
+        # Include market states
+        market_states = []
+        for market_id, market in state.markets.markets.items():
+            market_states.append({
+                "market_id": market_id,
+                "name": market.name,
+                "price": market.price,
+                "total_invested": market.total_invested,
+                "return": market.get_return(),
+            })
         
         step_summary = {
             "type": "step_end",
             "step": t,
             "total_defaults": total_defaults,
             "total_equity": total_equity,
+            "bank_states": bank_states,
+            "market_states": market_states,
         }
         yield f"data: {json.dumps(step_summary)}\n\n"
         

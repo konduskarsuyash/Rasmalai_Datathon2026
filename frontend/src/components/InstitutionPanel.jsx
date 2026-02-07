@@ -1,5 +1,63 @@
 // components/InstitutionPanel.jsx
 const InstitutionPanel = ({ institution, onUpdate, onRemove, connections }) => {
+  // Check if it's a market node
+  const isMarket = institution.type === 'market' || institution.isMarket;
+
+  if (isMarket) {
+    // Market node display (read-only)
+    return (
+      <div className="p-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+            Market Details
+          </h3>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs text-gray-600 font-medium mb-1">
+              Market Name
+            </label>
+            <div className="px-3 py-2 bg-purple-50 border-2 border-purple-300 text-purple-900 rounded-lg text-sm font-bold">
+              {institution.name}
+            </div>
+          </div>
+
+          <div className="p-4 bg-purple-50 border-2 border-purple-300 rounded-lg">
+            <p className="text-sm text-purple-900 font-bold mb-2">📊 Market Node</p>
+            <p className="text-xs text-purple-700">
+              This is a market/investment destination. Banks can invest in or divest from this market during simulation.
+            </p>
+          </div>
+
+          {connections.length > 0 && (
+            <div className="border-t border-gray-300 pt-4">
+              <h4 className="text-sm font-bold text-gray-800 mb-2">
+                Active Investments ({connections.length})
+              </h4>
+              <div className="space-y-2 max-h-32 overflow-y-auto">
+                {connections.map((conn) => (
+                  <div
+                    key={conn.id}
+                    className="p-2 bg-purple-50 border border-purple-300 rounded-lg text-xs"
+                  >
+                    <div className="flex justify-between">
+                      <span className="font-semibold text-purple-800">
+                        Investment
+                      </span>
+                      <span className="text-purple-600">${conn.exposure}M</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Regular bank node panel
   return (
     <div className="p-4">
       <div className="flex items-center justify-between mb-4">
@@ -27,7 +85,6 @@ const InstitutionPanel = ({ institution, onUpdate, onRemove, connections }) => {
           />
         </div>
 
-        {/* Capital Input */}
         <div className="border-2 border-blue-200 rounded-lg p-3 bg-blue-50">
           <label className="block text-sm text-blue-900 font-bold mb-2">
             💰 Capital (Million $)
@@ -49,7 +106,6 @@ const InstitutionPanel = ({ institution, onUpdate, onRemove, connections }) => {
           </p>
         </div>
 
-        {/* Target Input */}
         <div className="border-2 border-green-200 rounded-lg p-3 bg-green-50">
           <label className="block text-sm text-green-900 font-bold mb-2">
             🎯 Target Leverage Ratio
@@ -72,7 +128,6 @@ const InstitutionPanel = ({ institution, onUpdate, onRemove, connections }) => {
           </p>
         </div>
 
-        {/* Risk Factor Input */}
         <div className="border-2 border-orange-200 rounded-lg p-3 bg-orange-50">
           <label className="block text-sm text-orange-900 font-bold mb-2">
             ⚠️ Risk Factor
@@ -87,9 +142,6 @@ const InstitutionPanel = ({ institution, onUpdate, onRemove, connections }) => {
               onUpdate(institution.id, { risk: parseFloat(e.target.value) })
             }
             className="w-full h-3 bg-gradient-to-r from-green-400 via-yellow-400 to-red-500 rounded-lg appearance-none cursor-pointer"
-            style={{
-              WebkitAppearance: 'none',
-            }}
           />
           <div className="flex justify-between text-xs text-orange-700 font-bold mt-2">
             <span>Conservative</span>
@@ -103,15 +155,20 @@ const InstitutionPanel = ({ institution, onUpdate, onRemove, connections }) => {
           </p>
         </div>
 
-        {/* Info Display */}
         <div className="border-t border-gray-300 pt-4">
-          <div className="grid grid-cols-2 gap-2 mb-3">
+          <div className="grid grid-cols-3 gap-2 mb-3">
             <div className="p-2 bg-gray-100 rounded-lg">
               <p className="text-xs text-gray-600">Type</p>
               <p className="text-sm font-bold text-gray-800">
                 {institution.type === "bank" && "🏛️ Bank"}
                 {institution.type === "exchange" && "📈 Exchange"}
                 {institution.type === "clearinghouse" && "⚖️ Clearing"}
+              </p>
+            </div>
+            <div className="p-2 bg-gray-100 rounded-lg">
+              <p className="text-xs text-gray-600">Capital</p>
+              <p className="text-sm font-bold text-green-600">
+                ${institution.capital}M
               </p>
             </div>
             <div className="p-2 bg-gray-100 rounded-lg">

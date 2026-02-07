@@ -19,6 +19,8 @@ import ScenarioPanel from "./ScenarioPanel";
 import BackendSimulationPanel from "./BackendSimulationPanel";
 import RealTimeSimulationPanel from "./RealTimeSimulationPanel";
 import SimulationResultCard from "./SimulationResultCard";
+import BankDashboard from "./BankDashboard";
+import MarketDashboard from "./MarketDashboard";
 
 const FinancialNetworkPlayground = () => {
   const { user } = useUser();
@@ -29,7 +31,7 @@ const FinancialNetworkPlayground = () => {
       id: "bank1",
       type: "bank",
       name: "Central Bank A",
-      position: { x: 200, y: 150 },
+      position: { x: 150, y: 150 },
       capital: 1000,
       target: 2.5,
       risk: 0.2,
@@ -38,28 +40,40 @@ const FinancialNetworkPlayground = () => {
       id: "bank2",
       type: "bank",
       name: "Commercial Bank B",
-      position: { x: 400, y: 150 },
+      position: { x: 350, y: 150 },
       capital: 800,
       target: 3.5,
       risk: 0.3,
     },
     {
-      id: "exchange1",
-      type: "exchange",
-      name: "Stock Exchange X",
-      position: { x: 300, y: 300 },
+      id: "bank3",
+      type: "bank",
+      name: "Investment Bank C",
+      position: { x: 550, y: 150 },
       capital: 1200,
       target: 4.0,
       risk: 0.25,
     },
+    // Market nodes
     {
-      id: "clearing1",
-      type: "clearinghouse",
-      name: "Clearing House C",
-      position: { x: 500, y: 300 },
-      capital: 900,
-      target: 2.0,
-      risk: 0.15,
+      id: "BANK_INDEX",
+      type: "market",
+      name: "Bank Index Fund",
+      position: { x: 250, y: 350 },
+      capital: 0,
+      target: 1.0,
+      risk: 0.0,
+      isMarket: true,
+    },
+    {
+      id: "FIN_SERVICES",
+      type: "market",
+      name: "Financial Services",
+      position: { x: 450, y: 350 },
+      capital: 0,
+      target: 1.0,
+      risk: 0.0,
+      isMarket: true,
     },
   ]);
 
@@ -143,6 +157,12 @@ const FinancialNetworkPlayground = () => {
   // Real-time simulation state
   const [activeTransactions, setActiveTransactions] = useState([]);
   const [realtimeConnections, setRealtimeConnections] = useState([]);
+
+  // Dashboard state
+  const [historicalData, setHistoricalData] = useState([]);
+  const [allTransactions, setAllTransactions] = useState([]);
+  const [activeDashboard, setActiveDashboard] = useState(null); // { type: 'bank' | 'market', id: string }
+  const [isSimulationRunning, setIsSimulationRunning] = useState(false);
 
   // Derive metrics from backend result when present (so MetricsPanel reflects last run)
   const effectiveMetrics = backendResult?.summary
@@ -420,7 +440,39 @@ const FinancialNetworkPlayground = () => {
     if (event.type === 'init') {
       // Initialize connections from backend
       setRealtimeConnections(event.connections);
+      // Reset historical data when simulation starts
+      setHistoricalData([]);
+      setAllTransactions([]);
+      setIsSimulationRunning(true);
     } else if (event.type === 'transaction') {
+      // Store transaction for dashboard
+      setAllTransactions((prev) => [
+        ...prev,
+        {
+          step: event.step,
+          from_bank: event.from_bank,
+          to_bank: event.to_bank,
+          market_id: event.market_id,
+          action: event.action,
+          amount: event.amount,
+          reason: event.reason,
+        },
+      ]);
+      
+      // Determine target based on action type
+      let targetId = null;
+      let targetType = 'bank';
+      
+      if (event.action === 'INVEST_MARKET' || event.action === 'DIVEST_MARKET') {
+        // Market transaction - use market_id as target
+        targetId = event.market_id || 'BANK_INDEX';
+        targetType = 'market';
+      } else if (event.action === 'INCREASE_LENDING' || event.action === 'DECREASE_LENDING') {
+        // Bank-to-bank transaction
+        targetId = event.to_bank;
+        targetType = 'bank';
+      }
+      
       // Add active transaction for visualization
       const txId = `tx-${event.step}-${event.from_bank}-${Date.now()}`;
       setActiveTransactions((prev) => [
@@ -428,26 +480,29 @@ const FinancialNetworkPlayground = () => {
         {
           id: txId,
           from: event.from_bank,
-          to: event.to_bank,
+          to: targetId,
+          targetType: targetType,
           amount: event.amount,
           action: event.action,
+          market_id: event.market_id,
         },
       ]);
 
       // Remove after animation duration
       setTimeout(() => {
         setActiveTransactions((prev) => prev.filter((tx) => tx.id !== txId));
-      }, 2000);
+      }, 3000);
 
-      // Update connection if it's a lending action
-      if (event.action === 'INCREASE_LENDING' && event.to_bank !== null) {
+      // Update/create connections based on action type
+      if (event.action === 'INCREASE_LENDING' && targetId !== null) {
+        // Bank-to-bank lending connection
         setRealtimeConnections((prev) => {
           const existing = prev.find(
-            (c) => c.from === event.from_bank && c.to === event.to_bank
+            (c) => c.from === event.from_bank && c.to === targetId && c.type === 'lending'
           );
           if (existing) {
             return prev.map((c) =>
-              c.from === event.from_bank && c.to === event.to_bank
+              c.from === event.from_bank && c.to === targetId && c.type === 'lending'
                 ? { ...c, amount: c.amount + event.amount }
                 : c
             );
@@ -456,13 +511,61 @@ const FinancialNetworkPlayground = () => {
               ...prev,
               {
                 from: event.from_bank,
-                to: event.to_bank,
+                to: targetId,
                 amount: event.amount,
+                type: 'lending',
               },
             ];
           }
         });
+      } else if (event.action === 'INVEST_MARKET') {
+        // Bank-to-market investment connection
+        setRealtimeConnections((prev) => {
+          const existing = prev.find(
+            (c) => c.from === event.from_bank && c.to === targetId && c.type === 'investment'
+          );
+          if (existing) {
+            return prev.map((c) =>
+              c.from === event.from_bank && c.to === targetId && c.type === 'investment'
+                ? { ...c, amount: c.amount + event.amount }
+                : c
+            );
+          } else {
+            return [
+              ...prev,
+              {
+                from: event.from_bank,
+                to: targetId,
+                amount: event.amount,
+                type: 'investment',
+              },
+            ];
+          }
+        });
+      } else if (event.action === 'DIVEST_MARKET') {
+        // Reduce market investment
+        setRealtimeConnections((prev) => 
+          prev.map((c) =>
+            c.from === event.from_bank && c.to === targetId && c.type === 'investment'
+              ? { ...c, amount: Math.max(0, c.amount - event.amount) }
+              : c
+          ).filter((c) => c.amount > 0.1) // Remove connections with negligible amounts
+        );
       }
+    } else if (event.type === 'step_end') {
+      // Store step data for historical analysis
+      setHistoricalData((prev) => [
+        ...prev,
+        {
+          step: event.step,
+          total_defaults: event.total_defaults,
+          total_equity: event.total_equity,
+          bank_states: event.bank_states,
+          market_states: event.market_states,
+        },
+      ]);
+    } else if (event.type === 'complete') {
+      setIsSimulationRunning(false);
     }
   };
 
@@ -474,6 +577,26 @@ const FinancialNetworkPlayground = () => {
       message: `Bank has defaulted (equity: $${event.equity.toFixed(2)}M)`,
       severity: "high",
     });
+  };
+
+  const handleInstitutionClickDuringSimulation = (institution) => {
+    // Only show dashboard if simulation has data
+    if (historicalData.length === 0 && !isSimulationRunning) {
+      // No simulation data yet, just select normally
+      setSelectedInstitution(institution);
+      return;
+    }
+
+    // Show dashboard for banks or markets
+    if (institution.isMarket || institution.type === 'market') {
+      setActiveDashboard({ type: 'market', id: institution.id });
+    } else if (institution.type === 'bank') {
+      setActiveDashboard({ type: 'bank', id: institution.id });
+    }
+  };
+
+  const closeDashboard = () => {
+    setActiveDashboard(null);
   };
 
   return (
@@ -517,22 +640,41 @@ const FinancialNetworkPlayground = () => {
               </h2>
             </div>
             <ControlPanel
-              parameters={parameters}
-              onParametersChange={setParameters}
               onAddInstitution={handleAddInstitution}
-              onAddConnection={handleAddConnection}
               institutions={institutions}
-            />
-            <ScenarioPanel onApplyScenario={applyScenario} />
-            <BackendSimulationPanel
-              onResult={setBackendResult}
-              lastResult={backendResult}
-              institutions={institutions}
+              onClearAll={() => {
+                setInstitutions([
+                  {
+                    id: "BANK_INDEX",
+                    type: "market",
+                    name: "Bank Index Fund",
+                    position: { x: 250, y: 350 },
+                    capital: 0,
+                    target: 1.0,
+                    risk: 0.0,
+                    isMarket: true,
+                  },
+                  {
+                    id: "FIN_SERVICES",
+                    type: "market",
+                    name: "Financial Services",
+                    position: { x: 450, y: 350 },
+                    capital: 0,
+                    target: 1.0,
+                    risk: 0.0,
+                    isMarket: true,
+                  },
+                ]);
+                setConnections([]);
+                setRealtimeConnections([]);
+                setActiveTransactions([]);
+                setSelectedInstitution(null);
+              }}
             />
             <RealTimeSimulationPanel
               onResult={setBackendResult}
               lastResult={backendResult}
-              institutions={institutions}
+              institutions={institutions.filter(i => !i.isMarket)}
               onTransactionEvent={handleTransactionEvent}
               onDefaultEvent={handleDefaultEvent}
             />
@@ -572,7 +714,11 @@ const FinancialNetworkPlayground = () => {
           <NetworkCanvas
             institutions={institutions}
             connections={connections}
-            onSelectInstitution={setSelectedInstitution}
+            onSelectInstitution={
+              isSimulationRunning || historicalData.length > 0
+                ? handleInstitutionClickDuringSimulation
+                : setSelectedInstitution
+            }
             onSelectConnection={setSelectedConnection}
             onUpdateInstitution={handleUpdateInstitution}
             onAddConnection={handleAddConnection}
@@ -660,6 +806,36 @@ const FinancialNetworkPlayground = () => {
           : <ChevronLeft className="w-5 h-5" />}
         </button>
       </div>
+
+      {/* Dashboards (rendered as modals) */}
+      {activeDashboard && activeDashboard.type === 'bank' && (() => {
+        // Find bank by either string ID or numeric ID
+        const bank = institutions.find(i => {
+          if (i.id === activeDashboard.id) return true;
+          // Handle case where backend sends numeric ID but frontend has string IDs
+          const numericId = typeof activeDashboard.id === 'number' ? activeDashboard.id : null;
+          if (numericId !== null && i.id === `bank${numericId + 1}`) return true;
+          return false;
+        });
+        
+        return bank ? (
+          <BankDashboard
+            bank={bank}
+            historicalData={historicalData}
+            transactions={allTransactions}
+            onClose={closeDashboard}
+          />
+        ) : null;
+      })()}
+      
+      {activeDashboard && activeDashboard.type === 'market' && (
+        <MarketDashboard
+          market={institutions.find(i => i.id === activeDashboard.id)}
+          historicalData={historicalData}
+          transactions={allTransactions}
+          onClose={closeDashboard}
+        />
+      )}
     </div>
   );
 };

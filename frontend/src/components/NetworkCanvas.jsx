@@ -77,19 +77,61 @@ const NetworkCanvas = ({
 
     // Draw real-time connections (from backend simulation)
     realtimeConnections.forEach((conn) => {
-      const source = institutions.find((i) => i.id === `bank${conn.from + 1}`);
-      const target = institutions.find((i) => i.id === `bank${conn.to + 1}`);
-      if (source && target) {
-        drawRealtimeConnection(ctx, source, target, conn);
+      const sourceInst = institutions.find((i) => {
+        // Match bank IDs
+        if (i.type === 'bank') {
+          const bankNum = parseInt(i.id.replace('bank', ''));
+          return bankNum === conn.from + 1;
+        }
+        return false;
+      });
+      
+      const targetInst = institutions.find((i) => {
+        // Match bank IDs or market IDs
+        if (i.type === 'bank') {
+          const bankNum = parseInt(i.id.replace('bank', ''));
+          return bankNum === conn.to + 1;
+        } else if (i.type === 'market' || i.isMarket) {
+          // Direct market ID match
+          return i.id === conn.to;
+        }
+        return false;
+      });
+      
+      if (sourceInst && targetInst) {
+        drawRealtimeConnection(ctx, sourceInst, targetInst, conn);
       }
     });
 
     // Draw active transactions
     activeTransactions.forEach((tx) => {
-      const source = institutions.find((i) => i.id === `bank${tx.from + 1}`);
-      const target = tx.to !== null ? institutions.find((i) => i.id === `bank${tx.to + 1}`) : null;
-      if (source) {
-        drawTransaction(ctx, source, target, tx);
+      const sourceInst = institutions.find((i) => {
+        if (i.type === 'bank') {
+          const bankNum = parseInt(i.id.replace('bank', ''));
+          return bankNum === tx.from + 1;
+        }
+        return false;
+      });
+      
+      let targetInst = null;
+      if (tx.targetType === 'market') {
+        // Find market by ID
+        targetInst = institutions.find((i) => 
+          (i.type === 'market' || i.isMarket) && i.id === tx.market_id
+        );
+      } else if (tx.to !== null) {
+        // Find bank by ID
+        targetInst = institutions.find((i) => {
+          if (i.type === 'bank') {
+            const bankNum = parseInt(i.id.replace('bank', ''));
+            return bankNum === tx.to + 1;
+          }
+          return false;
+        });
+      }
+      
+      if (sourceInst) {
+        drawTransaction(ctx, sourceInst, targetInst, tx);
       }
     });
 
@@ -307,6 +349,89 @@ const NetworkCanvas = ({
     const radius = 45;
     const pulseScale = 1 + Math.sin(pulsePhase) * 0.05;
 
+    // Special rendering for market nodes
+    if (inst.type === 'market' || inst.isMarket) {
+      // Market node - distinctive purple/pink style
+      const glowRadius = radius * pulseScale + 15;
+      const gradient = ctx.createRadialGradient(x, y, radius, x, y, glowRadius);
+      gradient.addColorStop(0, "rgba(168, 85, 247, 0.4)");
+      gradient.addColorStop(1, "transparent");
+
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Main circle with gradient
+      const circleGradient = ctx.createRadialGradient(x, y - 15, 0, x, y, radius);
+      circleGradient.addColorStop(0, "#a855f7");
+      circleGradient.addColorStop(1, "#7c3aed");
+
+      ctx.fillStyle = circleGradient;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (isSelected) {
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = "#a855f7";
+        ctx.strokeStyle = "#a855f7";
+        ctx.lineWidth = 4;
+        ctx.stroke();
+      } else {
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+
+      // Market icon - chart/graph
+      ctx.fillStyle = "#ffffff";
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = "round";
+
+      // Rising chart bars
+      ctx.fillRect(x - 15, y - 5, 6, 15);
+      ctx.fillRect(x - 5, y - 12, 6, 22);
+      ctx.fillRect(x + 5, y - 8, 6, 18);
+      ctx.fillRect(x + 15, y - 15, 6, 25);
+
+      // Name label
+      ctx.font = "bold 12px system-ui";
+      const textWidth = ctx.measureText(inst.name).width;
+      const labelY = y + radius + 12;
+
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = "#a855f7";
+
+      ctx.fillStyle = "#ffffff";
+      ctx.strokeStyle = "#a855f7";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(x - textWidth / 2 - 10, labelY - 10, textWidth + 20, 20, 8);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "#7c3aed";
+      ctx.textBaseline = "middle";
+      ctx.textAlign = "center";
+      ctx.fillText(inst.name, x, labelY);
+
+      // Market indicator
+      ctx.fillStyle = "#a855f7";
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = "#a855f7";
+      ctx.beginPath();
+      ctx.arc(x + radius - 10, y - radius + 10, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      
+      return;
+    }
+
+    // Regular bank node rendering
     // Outer glow ring with pulse
     if (isSelected || isSimulating) {
       const glowRadius = radius * pulseScale + 15;
@@ -493,7 +618,14 @@ const NetworkCanvas = ({
   };
 
   const drawRealtimeConnection = (ctx, source, target, conn) => {
-    // Draw real-time connection in bright cyan
+    // Different colors for different connection types
+    const connectionColors = {
+      lending: { main: "#06b6d4", glow: "#0891b2", label: "Loan" },
+      investment: { main: "#a855f7", glow: "#9333ea", label: "Investment" },
+    };
+    
+    const colors = connectionColors[conn.type] || connectionColors.lending;
+    
     const angle = Math.atan2(
       target.position.y - source.position.y,
       target.position.x - source.position.x,
@@ -509,12 +641,12 @@ const NetworkCanvas = ({
 
     // Bright animated connection
     ctx.shadowBlur = 20;
-    ctx.shadowColor = "#06b6d4";
+    ctx.shadowColor = colors.glow;
 
     const gradient = ctx.createLinearGradient(startX, startY, endX, endY);
-    gradient.addColorStop(0, "#06b6d4");
-    gradient.addColorStop(0.5, "#0891b2");
-    gradient.addColorStop(1, "#06b6d4");
+    gradient.addColorStop(0, colors.main);
+    gradient.addColorStop(0.5, colors.glow);
+    gradient.addColorStop(1, colors.main);
 
     ctx.strokeStyle = gradient;
     ctx.lineWidth = 4;
@@ -540,7 +672,7 @@ const NetworkCanvas = ({
       endY - headlen * Math.sin(angle + Math.PI / 6),
     );
     ctx.closePath();
-    ctx.fillStyle = "#0891b2";
+    ctx.fillStyle = colors.glow;
     ctx.fill();
 
     // Amount label
@@ -548,56 +680,68 @@ const NetworkCanvas = ({
     const midY = (startY + endY) / 2;
 
     ctx.shadowBlur = 12;
-    ctx.shadowColor = "#06b6d4";
+    ctx.shadowColor = colors.main;
 
     ctx.fillStyle = "#ffffff";
-    ctx.strokeStyle = "#06b6d4";
+    ctx.strokeStyle = colors.main;
     ctx.lineWidth = 2;
 
     ctx.beginPath();
-    ctx.roundRect(midX - 28, midY - 12, 56, 24, 8);
+    ctx.roundRect(midX - 32, midY - 12, 64, 24, 8);
     ctx.fill();
     ctx.stroke();
 
     ctx.shadowBlur = 0;
-    ctx.fillStyle = "#0891b2";
-    ctx.font = "bold 11px system-ui";
+    ctx.fillStyle = colors.glow;
+    ctx.font = "bold 10px system-ui";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(`$${conn.amount.toFixed(1)}M`, midX, midY);
   };
 
   const drawTransaction = (ctx, source, target, tx) => {
+    // Action-specific colors and labels
+    const actionStyles = {
+      INVEST_MARKET: { color: "#a855f7", label: "INVEST", glow: "#9333ea" },
+      DIVEST_MARKET: { color: "#ec4899", label: "DIVEST", glow: "#db2777" },
+      INCREASE_LENDING: { color: "#10b981", label: "LEND", glow: "#059669" },
+      DECREASE_LENDING: { color: "#f59e0b", label: "REPAY", glow: "#d97706" },
+      HOARD_CASH: { color: "#6366f1", label: "HOLD", glow: "#4f46e5" },
+    };
+    
+    const style = actionStyles[tx.action] || { color: "#6b7280", label: tx.action, glow: "#4b5563" };
+    
     if (!target) {
-      // Market transaction or cash hoarding - show at source
+      // No target transaction (HOARD_CASH) - show at source
       ctx.save();
-      ctx.shadowBlur = 20;
-      ctx.shadowColor = "#f59e0b";
+      ctx.shadowBlur = 25;
+      ctx.shadowColor = style.glow;
 
       // Pulsing circle at source
-      const pulseSize = 20 + Math.sin(Date.now() / 100) * 5;
+      const pulseSize = 22 + Math.sin(Date.now() / 150) * 6;
       
       ctx.fillStyle = "#ffffff";
       ctx.beginPath();
       ctx.arc(source.position.x, source.position.y, pulseSize, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.strokeStyle = "#f59e0b";
+      ctx.strokeStyle = style.color;
       ctx.lineWidth = 3;
       ctx.stroke();
 
-      // Transaction label
-      ctx.fillStyle = "#f59e0b";
-      ctx.font = "bold 12px system-ui";
+      // Action label
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = style.color;
+      ctx.font = "bold 11px system-ui";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(tx.action.replace(/_/g, ' '), source.position.x, source.position.y);
+      ctx.fillText(style.label, source.position.x, source.position.y);
       
       ctx.restore();
       return;
     }
 
-    // Bank-to-bank transaction - animate along path
+    // Transaction with target - animate along path
     const angle = Math.atan2(
       target.position.y - source.position.y,
       target.position.x - source.position.x,
@@ -612,31 +756,46 @@ const NetworkCanvas = ({
     const endY = target.position.y - Math.sin(angle) * targetRadius;
 
     // Animated particle moving along path
-    const progress = ((Date.now() % 2000) / 2000);
+    const progress = ((Date.now() % 3000) / 3000);
     const txX = startX + (endX - startX) * progress;
     const txY = startY + (endY - startY) * progress;
 
     ctx.save();
-    ctx.shadowBlur = 25;
-    ctx.shadowColor = "#10b981";
+    ctx.shadowBlur = 30;
+    ctx.shadowColor = style.glow;
 
     // Large glowing circle
     ctx.fillStyle = "#ffffff";
     ctx.beginPath();
-    ctx.arc(txX, txY, 18, 0, Math.PI * 2);
+    ctx.arc(txX, txY, 20, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.strokeStyle = "#10b981";
+    ctx.strokeStyle = style.color;
     ctx.lineWidth = 4;
     ctx.stroke();
 
-    // Amount inside
+    // Amount and action inside
     ctx.shadowBlur = 0;
-    ctx.fillStyle = "#10b981";
-    ctx.font = "bold 14px system-ui";
+    ctx.fillStyle = style.color;
+    ctx.font = "bold 9px system-ui";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(`$${tx.amount.toFixed(0)}`, txX, txY);
+    ctx.fillText(style.label, txX, txY - 5);
+    
+    ctx.font = "bold 11px system-ui";
+    ctx.fillText(`$${tx.amount.toFixed(0)}`, txX, txY + 6);
+
+    // Trail effect
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = style.glow;
+    ctx.strokeStyle = style.color;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(txX, txY);
+    ctx.stroke();
+    ctx.setLineDash([]);
 
     ctx.restore();
   };
