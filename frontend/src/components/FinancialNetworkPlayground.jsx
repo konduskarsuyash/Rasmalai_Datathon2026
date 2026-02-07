@@ -25,92 +25,10 @@ import LiveActivityFeed from "./LiveActivityFeed";
 const FinancialNetworkPlayground = () => {
   const { user } = useUser();
 
-  // Network state
-  const [institutions, setInstitutions] = useState([
-    {
-      id: "bank1",
-      type: "bank",
-      name: "Central Bank A",
-      position: { x: 150, y: 150 },
-      capital: 1000,
-      target: 2.5,
-      risk: 0.2,
-    },
-    {
-      id: "bank2",
-      type: "bank",
-      name: "Commercial Bank B",
-      position: { x: 350, y: 150 },
-      capital: 800,
-      target: 3.5,
-      risk: 0.3,
-    },
-    {
-      id: "bank3",
-      type: "bank",
-      name: "Investment Bank C",
-      position: { x: 550, y: 150 },
-      capital: 1200,
-      target: 4.0,
-      risk: 0.25,
-    },
-    // Market nodes
-    {
-      id: "BANK_INDEX",
-      type: "market",
-      name: "Bank Index Fund",
-      position: { x: 250, y: 350 },
-      capital: 0,
-      target: 1.0,
-      risk: 0.0,
-      isMarket: true,
-    },
-    {
-      id: "FIN_SERVICES",
-      type: "market",
-      name: "Financial Services",
-      position: { x: 450, y: 350 },
-      capital: 0,
-      target: 1.0,
-      risk: 0.0,
-      isMarket: true,
-    },
-  ]);
+  // Network state - Start completely empty
+  const [institutions, setInstitutions] = useState([]);
 
-  const [connections, setConnections] = useState([
-    {
-      id: "conn1",
-      source: "bank1",
-      target: "bank2",
-      type: "credit",
-      exposure: 300,
-      weight: 0.7,
-    },
-    {
-      id: "conn2",
-      source: "bank1",
-      target: "exchange1",
-      type: "settlement",
-      exposure: 200,
-      weight: 0.5,
-    },
-    {
-      id: "conn3",
-      source: "bank2",
-      target: "clearing1",
-      type: "margin",
-      exposure: 150,
-      weight: 0.6,
-    },
-    {
-      id: "conn4",
-      source: "exchange1",
-      target: "clearing1",
-      type: "settlement",
-      exposure: 400,
-      weight: 0.8,
-    },
-  ]);
+  const [connections, setConnections] = useState([]);
 
   // Simulation state
   const [isSimulating, setIsSimulating] = useState(false);
@@ -124,14 +42,14 @@ const FinancialNetworkPlayground = () => {
   const [zoomLevel, setZoomLevel] = useState(1);
   const [tool, setTool] = useState("select");
 
-  // System metrics
+  // System metrics - Initialize to 0 until simulation runs
   const [metrics, setMetrics] = useState({
-    systemicRisk: 0.2,
-    liquidityFlow: 0.75,
-    networkCongestion: 0.3,
-    stabilityIndex: 0.85,
-    cascadeRisk: 0.15,
-    interconnectedness: 0.6,
+    systemicRisk: 0,
+    liquidityFlow: 0,
+    networkCongestion: 0,
+    stabilityIndex: 0,
+    cascadeRisk: 0,
+    interconnectedness: 0,
   });
 
   // Simulation parameters
@@ -330,6 +248,10 @@ const FinancialNetworkPlayground = () => {
       capital: 100,
       target: 3.0,
       risk: 0.3,
+      // Interbank parameters
+      interbankRate: 2.5,
+      haircut: 15,
+      reserveRatio: 10,
     };
     setInstitutions((prev) => [...prev, newInst]);
     setSelectedInstitution(newInst);

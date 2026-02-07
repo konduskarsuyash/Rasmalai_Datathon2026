@@ -157,6 +157,66 @@ const InstitutionPanel = ({ institution, onUpdate, onRemove, connections }) => {
           </p>
         </div>
 
+        {/* Interbank Transaction Parameters */}
+        <div className="border-2 border-purple-200 rounded-lg p-3 bg-purple-50">
+          <h4 className="text-sm text-purple-900 font-bold mb-3">
+            🏦 Interbank Lending Parameters
+          </h4>
+          
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs text-purple-800 font-medium mb-1">
+                Interbank Rate (%)
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                value={institution.interbankRate || 2.5}
+                onChange={(e) => {
+                  const val = e.target.value === '' ? 2.5 : parseFloat(e.target.value);
+                  onUpdate(institution.id, { interbankRate: val });
+                }}
+                className="w-full px-3 py-2 bg-white border-2 border-purple-300 text-gray-800 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none"
+              />
+              <p className="text-xs text-purple-700 mt-1">LIBOR + Spread</p>
+            </div>
+
+            <div>
+              <label className="block text-xs text-purple-800 font-medium mb-1">
+                Collateral Haircut (%)
+              </label>
+              <input
+                type="number"
+                step="1"
+                value={institution.haircut || 15}
+                onChange={(e) => {
+                  const val = e.target.value === '' ? 15 : parseFloat(e.target.value);
+                  onUpdate(institution.id, { haircut: val });
+                }}
+                className="w-full px-3 py-2 bg-white border-2 border-purple-300 text-gray-800 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none"
+              />
+              <p className="text-xs text-purple-700 mt-1">Margin on secured lending</p>
+            </div>
+
+            <div>
+              <label className="block text-xs text-purple-800 font-medium mb-1">
+                Reserve Requirement (%)
+              </label>
+              <input
+                type="number"
+                step="1"
+                value={institution.reserveRatio || 10}
+                onChange={(e) => {
+                  const val = e.target.value === '' ? 10 : parseFloat(e.target.value);
+                  onUpdate(institution.id, { reserveRatio: val });
+                }}
+                className="w-full px-3 py-2 bg-white border-2 border-purple-300 text-gray-800 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none"
+              />
+              <p className="text-xs text-purple-700 mt-1">Central bank mandate</p>
+            </div>
+          </div>
+        </div>
+
         <div className="border-t border-gray-300 pt-4">
           <div className="grid grid-cols-3 gap-2 mb-3">
             <div className="p-2 bg-gray-100 rounded-lg">
