@@ -2,11 +2,19 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useUser, SignOutButton } from "@clerk/clerk-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Layers,
+  Settings,
+  TrendingUp,
+  LogOut,
+} from "lucide-react";
 import NetworkCanvas from "./NetworkCanvas";
 import ControlPanel from "./ControlPanel";
 import InstitutionPanel from "./InstitutionPanel";
 import MetricsPanel from "./MetricsPanel";
-import SimulationControls from "./SimulationControls";
+import CanvasToolbar from "./CanvasToolbar";
 import ScenarioPanel from "./ScenarioPanel";
 
 const FinancialNetworkPlayground = () => {
@@ -96,6 +104,12 @@ const FinancialNetworkPlayground = () => {
   const [simulationSpeed, setSimulationSpeed] = useState(1);
   const [currentStep, setCurrentStep] = useState(0);
   const [maxSteps, setMaxSteps] = useState(100);
+
+  // UI state
+  const [leftPanelOpen, setLeftPanelOpen] = useState(true);
+  const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [tool, setTool] = useState("select");
 
   // System metrics
   const [metrics, setMetrics] = useState({
@@ -381,138 +395,169 @@ const FinancialNetworkPlayground = () => {
   };
 
   return (
-    <div className="w-full h-screen bg-gray-900 text-white overflow-hidden flex flex-col">
-      {/* Top Navigation Bar */}
-      <nav className="bg-gray-950 border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+    <div className="w-full h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 text-gray-900 overflow-hidden flex flex-col relative">
+      {/* Minimal Top Bar */}
+      <div className="h-14 bg-white/90 backdrop-blur-xl border-b border-gray-200 flex items-center justify-between px-6 relative z-50 shadow-sm">
         <Link
           to="/"
-          className="text-xl font-bold text-red-400 hover:text-red-300 transition"
+          className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent hover:from-blue-300 hover:to-purple-400 transition flex items-center space-x-2"
         >
-          FinNet
+          <Layers className="w-5 h-5 text-blue-400" />
+          <span>FinNet</span>
         </Link>
         <div className="flex items-center space-x-4">
-          <span className="text-sm text-gray-400">
-            {user?.fullName || user?.primaryEmailAddress?.emailAddress}
+          <span className="text-sm text-gray-600 flex items-center space-x-2">
+            <TrendingUp className="w-4 h-4" />
+            <span>
+              {user?.fullName || user?.primaryEmailAddress?.emailAddress}
+            </span>
           </span>
           <SignOutButton>
-            <button className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm transition flex items-center space-x-2">
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                />
-              </svg>
+            <button className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm transition-all duration-200 flex items-center space-x-2 border border-gray-300">
+              <LogOut className="w-4 h-4" />
               <span>Sign Out</span>
             </button>
           </SignOutButton>
         </div>
-      </nav>
+      </div>
 
-      {/* Header */}
-      <header className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-blue-400">
-            Financial Infrastructure Simulator
-          </h1>
-          <p className="text-sm text-gray-400">
-            Network-Based Game-Theoretic Modeling Platform
-          </p>
-        </div>
-        <SimulationControls
-          isSimulating={isSimulating}
-          onToggleSimulation={() => setIsSimulating(!isSimulating)}
-          onReset={resetSimulation}
-          simulationSpeed={simulationSpeed}
-          onSpeedChange={setSimulationSpeed}
-          currentStep={currentStep}
-          maxSteps={maxSteps}
-        />
-      </header>
-
-      {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar - Controls */}
-        <div className="w-80 bg-gray-800 border-r border-gray-700 overflow-y-auto">
-          <ControlPanel
-            parameters={parameters}
-            onParametersChange={setParameters}
-            onAddInstitution={handleAddInstitution}
-            onAddConnection={handleAddConnection}
-            institutions={institutions}
-          />
-          <ScenarioPanel onApplyScenario={applyScenario} />
+      {/* Main Workspace */}
+      <div className="flex-1 flex relative overflow-hidden">
+        {/* Left Panel - Collapsible */}
+        <div
+          className={`${leftPanelOpen ? "w-80" : "w-0"} transition-all duration-300 bg-white/80 backdrop-blur-xl border-r border-gray-200 overflow-hidden relative z-40 shadow-lg`}
+        >
+          <div className="h-full overflow-y-auto scrollbar-hide p-4 space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold flex items-center space-x-2">
+                <Settings className="w-5 h-5" />
+                <span>Controls</span>
+              </h2>
+            </div>
+            <ControlPanel
+              parameters={parameters}
+              onParametersChange={setParameters}
+              onAddInstitution={handleAddInstitution}
+              onAddConnection={handleAddConnection}
+              institutions={institutions}
+            />
+            <ScenarioPanel onApplyScenario={applyScenario} />
+          </div>
         </div>
 
-        {/* Center - Network Visualization */}
-        <div className="flex-1 bg-gray-900 relative">
+        {/* Toggle Left Panel Button */}
+        <button
+          onClick={() => setLeftPanelOpen(!leftPanelOpen)}
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-50 bg-white/90 backdrop-blur-xl border border-gray-300 rounded-r-lg p-2 hover:bg-gray-50 transition-all duration-200 shadow-lg text-gray-700"
+          style={{ left: leftPanelOpen ? "20rem" : "0" }}
+        >
+          {leftPanelOpen ?
+            <ChevronLeft className="w-5 h-5" />
+          : <ChevronRight className="w-5 h-5" />}
+        </button>
+
+        {/* Center Canvas Area */}
+        <div className="flex-1 relative">
+          {/* Floating Toolbar */}
+          <div className="absolute top-6 left-1/2 -translate-x-1/2 z-40">
+            <CanvasToolbar
+              tool={tool}
+              onToolChange={setTool}
+              isSimulating={isSimulating}
+              onToggleSimulation={() => setIsSimulating(!isSimulating)}
+              onReset={resetSimulation}
+              zoomLevel={zoomLevel}
+              onZoomIn={() => setZoomLevel(Math.min(zoomLevel + 0.1, 2))}
+              onZoomOut={() => setZoomLevel(Math.max(zoomLevel - 0.1, 0.5))}
+              currentStep={currentStep}
+              maxSteps={maxSteps}
+            />
+          </div>
+
+          {/* Network Canvas */}
           <NetworkCanvas
             institutions={institutions}
             connections={connections}
             onSelectInstitution={setSelectedInstitution}
             onSelectConnection={setSelectedConnection}
             onUpdateInstitution={handleUpdateInstitution}
+            onAddConnection={handleAddConnection}
             selectedInstitution={selectedInstitution}
             selectedConnection={selectedConnection}
             isSimulating={isSimulating}
+            zoomLevel={zoomLevel}
+            tool={tool}
           />
 
-          {/* Alerts Overlay */}
-          <div className="absolute top-4 right-4 w-80 max-h-96 overflow-y-auto space-y-2">
+          {/* Connection Hint - Bottom Left */}
+          <div className="absolute bottom-6 left-6 px-4 py-2 bg-white/90 backdrop-blur-xl border border-gray-300 rounded-xl text-sm text-gray-700 shadow-lg">
+            <span className="font-semibold text-blue-600">Tip:</span> Hold{" "}
+            <kbd className="px-2 py-1 bg-gray-100 border border-gray-400 rounded text-xs text-gray-800">
+              Ctrl
+            </kbd>{" "}
+            + drag to connect nodes
+          </div>
+
+          {/* Alerts - Bottom Left (Above Hint) */}
+          <div className="absolute bottom-20 left-6 w-72 max-h-64 overflow-y-auto space-y-2 scrollbar-hide">
             {alerts
-              .slice(-5)
+              .slice(-3)
               .reverse()
               .map((alert) => (
                 <div
                   key={alert.id}
-                  className={`p-3 rounded-lg shadow-lg ${
+                  className={`p-2.5 rounded-lg backdrop-blur-xl shadow-lg border transition-all duration-300 text-xs ${
                     alert.severity === "high" ?
-                      "bg-red-900 border border-red-600"
+                      "bg-red-50/90 border-red-300 text-red-900"
                     : alert.severity === "medium" ?
-                      "bg-yellow-900 border border-yellow-600"
-                    : "bg-blue-900 border border-blue-600"
+                      "bg-yellow-50/90 border-yellow-300 text-yellow-900"
+                    : "bg-blue-50/90 border-blue-300 text-blue-900"
                   }`}
                 >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="font-semibold text-sm">
-                        {alert.institution}
-                      </p>
-                      <p className="text-xs text-gray-300 mt-1">
-                        {alert.message}
-                      </p>
-                    </div>
-                    <span className="text-xs text-gray-400">
-                      {new Date(alert.timestamp).toLocaleTimeString()}
-                    </span>
-                  </div>
+                  <p className="font-semibold">{alert.institution}</p>
+                  <p className="mt-0.5 opacity-90">{alert.message}</p>
                 </div>
               ))}
           </div>
         </div>
 
-        {/* Right Sidebar - Metrics & Details */}
-        <div className="w-96 bg-gray-800 border-l border-gray-700 overflow-y-auto">
-          <MetricsPanel metrics={metrics} />
-          {selectedInstitution && (
-            <InstitutionPanel
-              institution={selectedInstitution}
-              onUpdate={handleUpdateInstitution}
-              onRemove={handleRemoveInstitution}
-              connections={connections.filter(
-                (c) =>
-                  c.source === selectedInstitution.id ||
-                  c.target === selectedInstitution.id,
-              )}
-            />
-          )}
+        {/* Right Panel - Collapsible */}
+        <div
+          className={`${rightPanelOpen ? "w-96" : "w-0"} transition-all duration-300 bg-white/80 backdrop-blur-xl border-l border-gray-200 overflow-hidden relative z-40 shadow-lg`}
+        >
+          <div className="h-full overflow-y-auto scrollbar-hide p-4 space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold flex items-center space-x-2">
+                <TrendingUp className="w-5 h-5" />
+                <span>Metrics</span>
+              </h2>
+            </div>
+            <MetricsPanel metrics={metrics} />
+            {selectedInstitution && (
+              <InstitutionPanel
+                institution={selectedInstitution}
+                onUpdate={handleUpdateInstitution}
+                onRemove={handleRemoveInstitution}
+                connections={connections.filter(
+                  (c) =>
+                    c.source === selectedInstitution.id ||
+                    c.target === selectedInstitution.id,
+                )}
+              />
+            )}
+          </div>
         </div>
+
+        {/* Toggle Right Panel Button */}
+        <button
+          onClick={() => setRightPanelOpen(!rightPanelOpen)}
+          className="absolute right-0 top-1/2 -translate-y-1/2 z-50 bg-white/90 backdrop-blur-xl border border-gray-300 rounded-l-lg p-2 hover:bg-gray-50 transition-all duration-200 shadow-lg text-gray-700"
+          style={{ right: rightPanelOpen ? "24rem" : "0" }}
+        >
+          {rightPanelOpen ?
+            <ChevronRight className="w-5 h-5" />
+          : <ChevronLeft className="w-5 h-5" />}
+        </button>
       </div>
     </div>
   );
