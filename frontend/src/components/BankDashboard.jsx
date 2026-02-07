@@ -1,5 +1,6 @@
 // components/BankDashboard.jsx
 import { useEffect, useRef } from 'react';
+import MLRiskPredictor from './MLRiskPredictor';
 
 const BankDashboard = ({ bank, historicalData, transactions, onClose }) => {
   const canvasRef = useRef(null);
@@ -402,6 +403,69 @@ const BankDashboard = ({ bank, historicalData, transactions, onClose }) => {
               <p className="text-xs text-amber-600 mt-1">Assets / Equity</p>
             </div>
           </div>
+          
+          {/* ML Risk Assessment Section */}
+          {bank.past_defaults !== undefined && (
+            <div className="bg-gradient-to-r from-red-50 to-orange-50 border-2 border-red-200 rounded-xl p-4">
+              <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                <span>🤖</span>
+                <span>ML-Based Risk Assessment</span>
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="bg-white bg-opacity-70 rounded-lg p-3 border border-red-200">
+                  <p className="text-xs text-red-600 font-semibold mb-1">📉 Default History</p>
+                  <p className="text-xl font-bold text-red-900">{bank.past_defaults || 0}</p>
+                  <p className="text-xs text-red-600 mt-1">
+                    {bank.past_defaults === 0 ? '✅ Clean' : '⚠️ Elevated risk'}
+                  </p>
+                </div>
+                <div className="bg-white bg-opacity-70 rounded-lg p-3 border border-orange-200">
+                  <p className="text-xs text-orange-600 font-semibold mb-1">🎯 Risk Appetite</p>
+                  <p className="text-xl font-bold text-orange-900">
+                    {((bank.risk_appetite || 0.5) * 100).toFixed(0)}%
+                  </p>
+                  <p className="text-xs text-orange-600 mt-1">
+                    {bank.risk_appetite < 0.3 ? '🛡️ Conservative' : bank.risk_appetite > 0.7 ? '🚀 Aggressive' : '⚖️ Balanced'}
+                  </p>
+                </div>
+                <div className="bg-white bg-opacity-70 rounded-lg p-3 border border-yellow-200">
+                  <p className="text-xs text-yellow-600 font-semibold mb-1">📊 Volatility</p>
+                  <p className="text-xl font-bold text-yellow-900">
+                    {((bank.investment_volatility || 0) * 100).toFixed(0)}%
+                  </p>
+                  <p className="text-xs text-yellow-600 mt-1">
+                    {bank.investment_volatility < 0.3 ? '✅ Stable' : bank.investment_volatility > 0.7 ? '⚠️ High' : '🟡 Moderate'}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 text-xs text-gray-600 bg-white bg-opacity-50 rounded-lg p-2">
+                <p className="font-semibold mb-1">📖 What these metrics mean:</p>
+                <p>• <strong>Default History:</strong> Number of times this bank failed to meet obligations (0 = best)</p>
+                <p>• <strong>Risk Appetite:</strong> How aggressively the bank takes risk (0% = very conservative, 100% = very aggressive)</p>
+                <p>• <strong>Volatility:</strong> Variability in investment returns (lower = more predictable)</p>
+              </div>
+            </div>
+          )}
+          
+          {/* LIVE ML Risk Prediction - Real-time AI Model */}
+          <MLRiskPredictor 
+            bank={{
+              ...bank,
+              capital_ratio: currentState.leverage ? 1 / currentState.leverage : 0.1,
+              leverage: currentState.leverage || 10,
+              liquidity_ratio: currentState.cash / (currentState.capital || 100) || 0.2,
+              capital: currentState.capital,
+              cash: currentState.cash,
+              investments: currentState.investments,
+              past_defaults: bank.past_defaults || 0,
+              investment_volatility: bank.investment_volatility || 0,
+              risk_appetite: bank.risk_appetite || 0.5,
+            }}
+            marketState={{
+              stress: 0.3,
+              volatility: 0.02,
+            }}
+          />
           
           <div className="bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-xl p-4">
             <h3 className="text-sm font-bold text-gray-700 mb-2">📚 Understanding the Balance Sheet:</h3>

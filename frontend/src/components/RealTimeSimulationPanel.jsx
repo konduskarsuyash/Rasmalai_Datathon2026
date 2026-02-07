@@ -1,12 +1,13 @@
 // components/RealTimeSimulationPanel.jsx
 import { useState, useRef } from "react";
-import { Play, Loader2, AlertCircle, CheckCircle, Zap } from "lucide-react";
+import { Play, Loader2, AlertCircle, CheckCircle, Zap, Brain, Calculator } from "lucide-react";
 import { useAuth } from "@clerk/clerk-react";
 
 const RealTimeSimulationPanel = ({ onResult, lastResult, institutions, onTransactionEvent, onDefaultEvent }) => {
   const { getToken } = useAuth();
   const [numSteps, setNumSteps] = useState(30);
-  const [useFeatherless, setUseFeatherless] = useState(false);
+  const [useFeatherless, setUseFeatherless] = useState(true);
+  const [useGameTheory, setUseGameTheory] = useState(true);  // Default to Nash equilibrium
   const [usePlaygroundNodes, setUsePlaygroundNodes] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
@@ -38,6 +39,7 @@ const RealTimeSimulationPanel = ({ onResult, lastResult, institutions, onTransac
         num_banks: usePlaygroundNodes && nodeParameters ? nodeParameters.length : 10,
         num_steps: numSteps,
         use_featherless: useFeatherless,
+        use_game_theory: useGameTheory,  // Game theory mode enabled
         verbose: false,
         node_parameters: nodeParameters,
         connection_density: 0.2,
@@ -205,6 +207,24 @@ const RealTimeSimulationPanel = ({ onResult, lastResult, institutions, onTransac
             disabled={isRunning}
             className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-800 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none disabled:bg-gray-100"
           />
+        </div>
+
+        <div className="flex items-center justify-between">
+          <label className="text-sm text-gray-700 font-medium">
+            🎮 Decision Model
+          </label>
+          <button
+            type="button"
+            onClick={() => setUseGameTheory((v) => !v)}
+            disabled={isRunning}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+              useGameTheory
+                ? "bg-gradient-to-r from-purple-500 to-blue-500 text-white shadow-md"
+                : "bg-gray-200 text-gray-800 border border-gray-300"
+            } disabled:opacity-50`}
+          >
+            {useGameTheory ? "Nash Equilibrium" : "Heuristics"}
+          </button>
         </div>
 
         <div className="flex items-center justify-between">
