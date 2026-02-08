@@ -19,6 +19,18 @@ const ControlPanel = ({
           >
             + Add Bank 🏛️
           </button>
+          <button
+            onClick={() => onAddInstitution("exchange")}
+            className="w-full px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white rounded-lg text-sm font-medium transition-all duration-200 shadow-md hover:shadow-lg"
+          >
+            + Add Exchange 📈
+          </button>
+          <button
+            onClick={() => onAddInstitution("clearinghouse")}
+            className="w-full px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-white rounded-lg text-sm font-medium transition-all duration-200 shadow-md hover:shadow-lg"
+          >
+            + Add Clearinghouse ⚖️
+          </button>
           
           {bankCount > 0 && (
             <div className="p-2 bg-blue-50 rounded-lg border border-blue-200">

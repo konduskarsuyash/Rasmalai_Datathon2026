@@ -84,18 +84,24 @@ const FinancialNetworkPlayground = () => {
   const [currentSimulationStep, setCurrentSimulationStep] = useState(0);
 
   // Derive metrics from backend result when present (so MetricsPanel reflects last run)
-  const effectiveMetrics = backendResult?.summary
-    ? {
-        systemicRisk: backendResult.summary.default_rate ?? metrics.systemicRisk,
-        liquidityFlow: Math.min(
-          1,
-          (backendResult.summary.final_total_equity ?? 0) / 1000
-        ) || metrics.liquidityFlow,
-        networkCongestion: (backendResult.summary.transactions_logged ?? 0) / 500 || metrics.networkCongestion,
-        stabilityIndex: backendResult.summary.surviving_banks != null
-          ? Math.min(1, backendResult.summary.surviving_banks / 20)
+  const effectiveMetrics =
+    backendResult?.summary ?
+      {
+        systemicRisk:
+          backendResult.summary.default_rate ?? metrics.systemicRisk,
+        liquidityFlow:
+          Math.min(1, (backendResult.summary.final_total_equity ?? 0) / 1000) ||
+          metrics.liquidityFlow,
+        networkCongestion:
+          (backendResult.summary.transactions_logged ?? 0) / 500 ||
+          metrics.networkCongestion,
+        stabilityIndex:
+          backendResult.summary.surviving_banks != null ?
+            Math.min(1, backendResult.summary.surviving_banks / 20)
           : metrics.stabilityIndex,
-        cascadeRisk: (backendResult.summary.total_cascade_events ?? 0) / 10 || metrics.cascadeRisk,
+        cascadeRisk:
+          (backendResult.summary.total_cascade_events ?? 0) / 10 ||
+          metrics.cascadeRisk,
         interconnectedness: backendResult.summary.system_collapsed ? 0.9 : 0.6,
       }
     : metrics;
@@ -105,20 +111,24 @@ const FinancialNetworkPlayground = () => {
     if (historicalData.length > 0) {
       const latestData = historicalData[historicalData.length - 1];
       if (latestData.market_states) {
-        setInstitutions(prev => prev.map(inst => {
-          if (inst.type === 'market' || inst.isMarket) {
-            const marketState = latestData.market_states.find(m => m.market_id === inst.id);
-            if (marketState) {
-              return {
-                ...inst,
-                price: marketState.price,
-                total_invested: marketState.total_invested,
-                return: marketState.return,
-              };
+        setInstitutions((prev) =>
+          prev.map((inst) => {
+            if (inst.type === "market" || inst.isMarket) {
+              const marketState = latestData.market_states.find(
+                (m) => m.market_id === inst.id,
+              );
+              if (marketState) {
+                return {
+                  ...inst,
+                  price: marketState.price,
+                  total_invested: marketState.total_invested,
+                  return: marketState.return,
+                };
+              }
             }
-          }
-          return inst;
-        }));
+            return inst;
+          }),
+        );
       }
     }
   }, [historicalData]);
@@ -261,16 +271,38 @@ const FinancialNetworkPlayground = () => {
   };
 
   const handleAddInstitution = (type) => {
-    const bankCount = institutions.filter(i => i.type === 'bank' && !i.isMarket).length;
-    const newId = `bank${bankCount + 1}`;
+    const typeCount = institutions.filter(
+      (i) => i.type === type && !i.isMarket,
+    ).length;
+
+    let idPrefix = "inst";
+    let labelPrefix = "Institution";
+    if (type === "bank") {
+      idPrefix = "bank";
+      labelPrefix = "Bank";
+    } else if (type === "exchange") {
+      idPrefix = "exchange";
+      labelPrefix = "Exchange";
+    } else if (type === "clearinghouse") {
+      idPrefix = "clearing";
+      labelPrefix = "Clearing";
+    }
+
+    const newId = `${idPrefix}${typeCount + 1}`;
     const newInst = {
       id: newId,
       type,
-      name: `Bank ${bankCount + 1}`,
+      name: `${labelPrefix} ${typeCount + 1}`,
       position: { x: Math.random() * 600 + 50, y: Math.random() * 400 + 50 },
       capital: 100,
       target: 3.0,
       risk: 0.3,
+      // ML-style input features
+      capitalRatio: 8,
+      leverage: 12,
+      networkCentrality: 0.78,
+      pastDefaults: 1,
+      marketStress: 45,
       // Interbank parameters
       interbankRate: 2.5,
       haircut: 15,
@@ -311,7 +343,7 @@ const FinancialNetworkPlayground = () => {
     );
     // Also update selected institution if it's the one being updated
     if (selectedInstitution?.id === id) {
-      setSelectedInstitution(prev => prev ? { ...prev, ...updates } : null);
+      setSelectedInstitution((prev) => (prev ? { ...prev, ...updates } : null));
     }
   };
 
@@ -389,9 +421,9 @@ const FinancialNetworkPlayground = () => {
   };
 
   const handleTransactionEvent = (event) => {
-    console.log('[FinancialNetworkPlayground] Received event:', event.type);
-    
-    if (event.type === 'init') {
+    console.log("[FinancialNetworkPlayground] Received event:", event.type);
+
+    if (event.type === "init") {
       // Initialize connections from backend
       setRealtimeConnections(event.connections);
       // Reset historical data when simulation starts
@@ -399,21 +431,23 @@ const FinancialNetworkPlayground = () => {
       setAllTransactions([]);
       setCurrentSimulationStep(0);
       setIsSimulationRunning(true);
-      
+
       // Store initial state with market data
       if (event.markets && event.markets.length > 0) {
         const initialState = {
           step: 0,
           total_defaults: 0,
-          total_equity: event.banks?.reduce((sum, b) => sum + b.capital, 0) || 0,
-          bank_states: event.banks?.map(b => ({
-            bank_id: b.id,
-            name: b.name,
-            capital: b.capital,
-            cash: b.cash,
-            is_defaulted: b.is_defaulted || false,
-          })) || [],
-          market_states: event.markets.map(m => ({
+          total_equity:
+            event.banks?.reduce((sum, b) => sum + b.capital, 0) || 0,
+          bank_states:
+            event.banks?.map((b) => ({
+              bank_id: b.id,
+              name: b.name,
+              capital: b.capital,
+              cash: b.cash,
+              is_defaulted: b.is_defaulted || false,
+            })) || [],
+          market_states: event.markets.map((m) => ({
             market_id: m.id,
             name: m.name,
             price: m.price || 100,
@@ -422,11 +456,15 @@ const FinancialNetworkPlayground = () => {
           })),
         };
         setHistoricalData([initialState]);
-        console.log('[FinancialNetworkPlayground] Stored initial state with', event.markets.length, 'markets');
+        console.log(
+          "[FinancialNetworkPlayground] Stored initial state with",
+          event.markets.length,
+          "markets",
+        );
       }
-      
-      console.log('[FinancialNetworkPlayground] Simulation initialized');
-    } else if (event.type === 'restart') {
+
+      console.log("[FinancialNetworkPlayground] Simulation initialized");
+    } else if (event.type === "restart") {
       // Reset all simulation state
       setHistoricalData([]);
       setAllTransactions([]);
@@ -435,21 +473,22 @@ const FinancialNetworkPlayground = () => {
       setActiveTransactions([]);
       setRealtimeConnections([]);
       setActiveDashboard(null);
-      console.log('[FinancialNetworkPlayground] Simulation restarted');
-    } else if (event.type === 'financial_crisis') {
+      console.log("[FinancialNetworkPlayground] Simulation restarted");
+    } else if (event.type === "financial_crisis") {
       // Show crisis alert
       addAlert({
         type: "critical",
         institution: "GLOBAL MARKETS",
-        message: "💥 FINANCIAL CRISIS! Markets crashed 50%, banks facing liquidity crisis",
+        message:
+          "💥 FINANCIAL CRISIS! Markets crashed 50%, banks facing liquidity crisis",
         severity: "high",
       });
-      console.log('[FinancialNetworkPlayground] Financial crisis triggered');
-    } else if (event.type === 'step_start') {
+      console.log("[FinancialNetworkPlayground] Financial crisis triggered");
+    } else if (event.type === "step_start") {
       // Update current step
       setCurrentSimulationStep(event.step);
-      console.log('[FinancialNetworkPlayground] Step started:', event.step);
-    } else if (event.type === 'transaction') {
+      console.log("[FinancialNetworkPlayground] Step started:", event.step);
+    } else if (event.type === "transaction") {
       // Store transaction for dashboard
       setAllTransactions((prev) => [
         ...prev,
@@ -463,26 +502,34 @@ const FinancialNetworkPlayground = () => {
           reason: event.reason,
         },
       ]);
-      
+
       // Log varying amounts to show dynamic behavior
       if (event.step < 2) {
-        console.log(`[Transaction] Bank ${event.from_bank}: ${event.action} $${event.amount.toFixed(1)}M`);
+        console.log(
+          `[Transaction] Bank ${event.from_bank}: ${event.action} $${event.amount.toFixed(1)}M`,
+        );
       }
-      
+
       // Determine target based on action type
       let targetId = null;
-      let targetType = 'bank';
-      
-      if (event.action === 'INVEST_MARKET' || event.action === 'DIVEST_MARKET') {
+      let targetType = "bank";
+
+      if (
+        event.action === "INVEST_MARKET" ||
+        event.action === "DIVEST_MARKET"
+      ) {
         // Market transaction - use market_id as target
-        targetId = event.market_id || 'BANK_INDEX';
-        targetType = 'market';
-      } else if (event.action === 'INCREASE_LENDING' || event.action === 'DECREASE_LENDING') {
+        targetId = event.market_id || "BANK_INDEX";
+        targetType = "market";
+      } else if (
+        event.action === "INCREASE_LENDING" ||
+        event.action === "DECREASE_LENDING"
+      ) {
         // Bank-to-bank transaction
         targetId = event.to_bank;
-        targetType = 'bank';
+        targetType = "bank";
       }
-      
+
       // Add active transaction for visualization
       const txId = `tx-${event.step}-${event.from_bank}-${Date.now()}`;
       setActiveTransactions((prev) => [
@@ -504,17 +551,24 @@ const FinancialNetworkPlayground = () => {
       }, 3000);
 
       // Update/create connections based on action type
-      if (event.action === 'INCREASE_LENDING' && targetId !== null) {
+      if (event.action === "INCREASE_LENDING" && targetId !== null) {
         // Bank-to-bank lending connection
         setRealtimeConnections((prev) => {
           const existing = prev.find(
-            (c) => c.from === event.from_bank && c.to === targetId && c.type === 'lending'
+            (c) =>
+              c.from === event.from_bank &&
+              c.to === targetId &&
+              c.type === "lending",
           );
           if (existing) {
             return prev.map((c) =>
-              c.from === event.from_bank && c.to === targetId && c.type === 'lending'
-                ? { ...c, amount: c.amount + event.amount }
-                : c
+              (
+                c.from === event.from_bank &&
+                c.to === targetId &&
+                c.type === "lending"
+              ) ?
+                { ...c, amount: c.amount + event.amount }
+              : c,
             );
           } else {
             return [
@@ -523,22 +577,29 @@ const FinancialNetworkPlayground = () => {
                 from: event.from_bank,
                 to: targetId,
                 amount: event.amount,
-                type: 'lending',
+                type: "lending",
               },
             ];
           }
         });
-      } else if (event.action === 'INVEST_MARKET') {
+      } else if (event.action === "INVEST_MARKET") {
         // Bank-to-market investment connection
         setRealtimeConnections((prev) => {
           const existing = prev.find(
-            (c) => c.from === event.from_bank && c.to === targetId && c.type === 'investment'
+            (c) =>
+              c.from === event.from_bank &&
+              c.to === targetId &&
+              c.type === "investment",
           );
           if (existing) {
             return prev.map((c) =>
-              c.from === event.from_bank && c.to === targetId && c.type === 'investment'
-                ? { ...c, amount: c.amount + event.amount }
-                : c
+              (
+                c.from === event.from_bank &&
+                c.to === targetId &&
+                c.type === "investment"
+              ) ?
+                { ...c, amount: c.amount + event.amount }
+              : c,
             );
           } else {
             return [
@@ -547,24 +608,36 @@ const FinancialNetworkPlayground = () => {
                 from: event.from_bank,
                 to: targetId,
                 amount: event.amount,
-                type: 'investment',
+                type: "investment",
               },
             ];
           }
         });
-      } else if (event.action === 'DIVEST_MARKET') {
+      } else if (event.action === "DIVEST_MARKET") {
         // Reduce market investment
-        setRealtimeConnections((prev) => 
-          prev.map((c) =>
-            c.from === event.from_bank && c.to === targetId && c.type === 'investment'
-              ? { ...c, amount: Math.max(0, c.amount - event.amount) }
-              : c
-          ).filter((c) => c.amount > 0.1) // Remove connections with negligible amounts
+        setRealtimeConnections(
+          (prev) =>
+            prev
+              .map((c) =>
+                (
+                  c.from === event.from_bank &&
+                  c.to === targetId &&
+                  c.type === "investment"
+                ) ?
+                  { ...c, amount: Math.max(0, c.amount - event.amount) }
+                : c,
+              )
+              .filter((c) => c.amount > 0.1), // Remove connections with negligible amounts
         );
       }
-    } else if (event.type === 'step_end') {
+    } else if (event.type === "step_end") {
       // Store step data for historical analysis
-      console.log('[FinancialNetworkPlayground] Step ended:', event.step, 'Bank states:', event.bank_states?.length);
+      console.log(
+        "[FinancialNetworkPlayground] Step ended:",
+        event.step,
+        "Bank states:",
+        event.bank_states?.length,
+      );
       setHistoricalData((prev) => {
         const updated = [
           ...prev,
@@ -576,37 +649,44 @@ const FinancialNetworkPlayground = () => {
             market_states: event.market_states,
           },
         ];
-        console.log('[FinancialNetworkPlayground] Historical data updated, total steps:', updated.length);
+        console.log(
+          "[FinancialNetworkPlayground] Historical data updated, total steps:",
+          updated.length,
+        );
         return updated;
       });
-    } else if (event.type === 'market_gain') {
+    } else if (event.type === "market_gain") {
       // Bank realized gain/loss from market divestment
-      const gainLoss = event.realized_gain >= 0 ? 'gain' : 'loss';
+      const gainLoss = event.realized_gain >= 0 ? "gain" : "loss";
       const absGain = Math.abs(event.realized_gain);
-      
+
       addAlert({
         type: event.realized_gain >= 0 ? "success" : "warning",
         institution: `Bank ${event.bank_id}`,
-        message: `Realized ${event.realized_gain >= 0 ? '📈' : '📉'} $${absGain.toFixed(1)}M ${gainLoss} (${event.market_return.toFixed(1)}% return) from ${event.market_id}`,
+        message: `Realized ${event.realized_gain >= 0 ? "📈" : "📉"} $${absGain.toFixed(1)}M ${gainLoss} (${event.market_return.toFixed(1)}% return) from ${event.market_id}`,
         severity: absGain > 10 ? "high" : "medium",
       });
-      
-      console.log(`[Market Gain] Bank ${event.bank_id}: $${event.realized_gain.toFixed(1)}M ${gainLoss} from ${event.market_id}`);
-    } else if (event.type === 'market_movement') {
+
+      console.log(
+        `[Market Gain] Bank ${event.bank_id}: $${event.realized_gain.toFixed(1)}M ${gainLoss} from ${event.market_id}`,
+      );
+    } else if (event.type === "market_movement") {
       // Market price fluctuation
-      const direction = event.change_pct >= 0 ? '⬆️' : '⬇️';
-      
+      const direction = event.change_pct >= 0 ? "⬆️" : "⬇️";
+
       addAlert({
         type: event.change_pct >= 0 ? "success" : "warning",
         institution: event.market_id,
-        message: `${direction} Price moved ${event.change_pct >= 0 ? '+' : ''}${event.change_pct.toFixed(1)}%: $${event.old_price} → $${event.new_price}`,
+        message: `${direction} Price moved ${event.change_pct >= 0 ? "+" : ""}${event.change_pct.toFixed(1)}%: $${event.old_price} → $${event.new_price}`,
         severity: Math.abs(event.change_pct) > 5 ? "high" : "medium",
       });
-      
-      console.log(`[Market Movement] ${event.market_id}: ${event.change_pct.toFixed(1)}% ($${event.old_price} → $${event.new_price})`);
-    } else if (event.type === 'complete') {
+
+      console.log(
+        `[Market Movement] ${event.market_id}: ${event.change_pct.toFixed(1)}% ($${event.old_price} → $${event.new_price})`,
+      );
+    } else if (event.type === "complete") {
       setIsSimulationRunning(false);
-      console.log('[FinancialNetworkPlayground] Simulation completed');
+      console.log("[FinancialNetworkPlayground] Simulation completed");
     }
   };
 
@@ -621,23 +701,36 @@ const FinancialNetworkPlayground = () => {
   };
 
   const handleInstitutionClickDuringSimulation = (institution) => {
-    console.log('[FinancialNetworkPlayground] Institution clicked:', institution.name, 'Historical data points:', historicalData.length);
-    
+    console.log(
+      "[FinancialNetworkPlayground] Institution clicked:",
+      institution.name,
+      "Historical data points:",
+      historicalData.length,
+    );
+
     // Only show dashboard if simulation has data
     if (historicalData.length === 0 && !isSimulationRunning) {
       // No simulation data yet, just select normally
       setSelectedInstitution(institution);
-      console.log('[FinancialNetworkPlayground] No historical data, selecting institution normally');
+      console.log(
+        "[FinancialNetworkPlayground] No historical data, selecting institution normally",
+      );
       return;
     }
 
     // Show dashboard for banks or markets
-    if (institution.isMarket || institution.type === 'market') {
-      console.log('[FinancialNetworkPlayground] Opening market dashboard for:', institution.id);
-      setActiveDashboard({ type: 'market', id: institution.id });
-    } else if (institution.type === 'bank') {
-      console.log('[FinancialNetworkPlayground] Opening bank dashboard for:', institution.id);
-      setActiveDashboard({ type: 'bank', id: institution.id });
+    if (institution.isMarket || institution.type === "market") {
+      console.log(
+        "[FinancialNetworkPlayground] Opening market dashboard for:",
+        institution.id,
+      );
+      setActiveDashboard({ type: "market", id: institution.id });
+    } else if (institution.type === "bank") {
+      console.log(
+        "[FinancialNetworkPlayground] Opening bank dashboard for:",
+        institution.id,
+      );
+      setActiveDashboard({ type: "bank", id: institution.id });
     }
   };
 
@@ -759,9 +852,9 @@ const FinancialNetworkPlayground = () => {
             institutions={institutions}
             connections={connections}
             onSelectInstitution={
-              isSimulationRunning || historicalData.length > 0
-                ? handleInstitutionClickDuringSimulation
-                : setSelectedInstitution
+              isSimulationRunning || historicalData.length > 0 ?
+                handleInstitutionClickDuringSimulation
+              : setSelectedInstitution
             }
             onSelectConnection={setSelectedConnection}
             onUpdateInstitution={handleUpdateInstitution}
@@ -805,10 +898,10 @@ const FinancialNetworkPlayground = () => {
                 </div>
               ))}
           </div>
-          
+
           {/* Live Activity Feed - Show during simulation */}
           {isSimulationRunning && (
-            <LiveActivityFeed 
+            <LiveActivityFeed
               transactions={allTransactions}
               currentStep={currentSimulationStep}
             />
@@ -826,6 +919,7 @@ const FinancialNetworkPlayground = () => {
                 <span>Metrics</span>
               </h2>
             </div>
+
             {backendResult && (
               <div className="mb-4">
                 <SimulationResultCard result={backendResult} />
@@ -833,16 +927,117 @@ const FinancialNetworkPlayground = () => {
             )}
             <MetricsPanel metrics={effectiveMetrics} />
             {selectedInstitution && (
-              <InstitutionPanel
-                institution={selectedInstitution}
-                onUpdate={handleUpdateInstitution}
-                onRemove={handleRemoveInstitution}
-                connections={connections.filter(
-                  (c) =>
-                    c.source === selectedInstitution.id ||
-                    c.target === selectedInstitution.id,
-                )}
-              />
+              <div className="mt-2 space-y-3">
+                {/* Input Features moved to right side */}
+                <div className="bg-white rounded-lg border border-gray-200 p-3 space-y-2">
+                  <p className="text-xs font-semibold text-gray-700">
+                    Input Features for <span className="font-bold">{selectedInstitution.name || "Citigroup"}</span>
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-700">
+                    <div className="space-y-1">
+                      <label className="block text-[11px] text-gray-600 font-medium">
+                        Capital ratio (%)
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={0.1}
+                        className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-[11px]"
+                        value={selectedInstitution.capitalRatio ?? 8}
+                        onChange={(e) => {
+                          const value = Number(e.target.value) || 0;
+                          handleUpdateInstitution(selectedInstitution.id, { capitalRatio: value });
+                        }}
+                      />
+                      <p className="text-[10px] text-gray-500">Citigroup capital ratio: 8% (low)</p>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[11px] text-gray-600 font-medium">
+                        Leverage (x)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        step={0.1}
+                        className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-[11px]"
+                        value={selectedInstitution.leverage ?? 12}
+                        onChange={(e) => {
+                          const value = Number(e.target.value) || 0;
+                          handleUpdateInstitution(selectedInstitution.id, { leverage: value });
+                        }}
+                      />
+                      <p className="text-[10px] text-gray-500">Citigroup leverage: 12x (high)</p>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[11px] text-gray-600 font-medium">
+                        Network centrality
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-[11px]"
+                        value={selectedInstitution.networkCentrality ?? 0.78}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          handleUpdateInstitution(selectedInstitution.id, { networkCentrality: isNaN(value) ? 0 : value });
+                        }}
+                      />
+                      <p className="text-[10px] text-gray-500">Network centrality: 0.78 (systemically important!)</p>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[11px] text-gray-600 font-medium">
+                        Past defaults
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-[11px]"
+                        value={selectedInstitution.pastDefaults ?? 1}
+                        onChange={(e) => {
+                          const value = Number(e.target.value) || 0;
+                          handleUpdateInstitution(selectedInstitution.id, { pastDefaults: value });
+                        }}
+                      />
+                      <p className="text-[10px] text-gray-500">Past defaults: 1 (red flag)</p>
+                    </div>
+                    <div className="space-y-1 col-span-2">
+                      <label className="block text-[11px] text-gray-600 font-medium">
+                        Market stress (%)
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={1}
+                        className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-[11px]"
+                        value={selectedInstitution.marketStress ?? 45}
+                        onChange={(e) => {
+                          const value = Number(e.target.value) || 0;
+                          handleUpdateInstitution(selectedInstitution.id, { marketStress: value });
+                        }}
+                      />
+                      <p className="text-[10px] text-gray-500">Market stress: 45% (elevated)</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Full institution editor on right */}
+                <InstitutionPanel
+                  institution={selectedInstitution}
+                  onUpdate={handleUpdateInstitution}
+                  onRemove={handleRemoveInstitution}
+                  connections={connections.filter(
+                    (c) =>
+                      c.source === selectedInstitution.id ||
+                      c.target === selectedInstitution.id,
+                  )}
+                />
+              </div>
             )}
           </div>
         </div>
@@ -860,29 +1055,35 @@ const FinancialNetworkPlayground = () => {
       </div>
 
       {/* Dashboards (rendered as modals) */}
-      {activeDashboard && activeDashboard.type === 'bank' && (() => {
-        // Find bank by either string ID or numeric ID
-        const bank = institutions.find(i => {
-          if (i.id === activeDashboard.id) return true;
-          // Handle case where backend sends numeric ID but frontend has string IDs
-          const numericId = typeof activeDashboard.id === 'number' ? activeDashboard.id : null;
-          if (numericId !== null && i.id === `bank${numericId + 1}`) return true;
-          return false;
-        });
-        
-        return bank ? (
-          <BankDashboard
-            bank={bank}
-            historicalData={historicalData}
-            transactions={allTransactions}
-            onClose={closeDashboard}
-          />
-        ) : null;
-      })()}
-      
-      {activeDashboard && activeDashboard.type === 'market' && (
+      {activeDashboard &&
+        activeDashboard.type === "bank" &&
+        (() => {
+          // Find bank by either string ID or numeric ID
+          const bank = institutions.find((i) => {
+            if (i.id === activeDashboard.id) return true;
+            // Handle case where backend sends numeric ID but frontend has string IDs
+            const numericId =
+              typeof activeDashboard.id === "number" ?
+                activeDashboard.id
+              : null;
+            if (numericId !== null && i.id === `bank${numericId + 1}`)
+              return true;
+            return false;
+          });
+
+          return bank ?
+              <BankDashboard
+                bank={bank}
+                historicalData={historicalData}
+                transactions={allTransactions}
+                onClose={closeDashboard}
+              />
+            : null;
+        })()}
+
+      {activeDashboard && activeDashboard.type === "market" && (
         <MarketDashboard
-          market={institutions.find(i => i.id === activeDashboard.id)}
+          market={institutions.find((i) => i.id === activeDashboard.id)}
           historicalData={historicalData}
           transactions={allTransactions}
           onClose={closeDashboard}
