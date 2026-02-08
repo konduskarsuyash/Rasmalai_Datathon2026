@@ -40,6 +40,7 @@ async def simulation_event_generator(config: SimulationConfig, featherless_fn):
         _count_neighbor_defaults, _select_counterparty, _propagate_cascades,
         create_banks
     )
+    from app.core.market import create_markets_from_config
     from app.core.bank import BankAction
     from app.ml.policy import select_action
     import random
@@ -47,8 +48,17 @@ async def simulation_event_generator(config: SimulationConfig, featherless_fn):
     GLOBAL_LEDGER.clear()
     state = SimulationState()
     state.banks = create_banks(config.num_banks, bank_configs=config.bank_configs)
-    state.markets = create_default_markets()
+    
+    # Use market_configs if provided, otherwise use defaults
+    if config.market_configs and len(config.market_configs) > 0:
+        state.markets = create_markets_from_config(config.market_configs)
+    else:
+        state.markets = create_default_markets()
+    
     _create_interbank_network(state.banks, connection_density=config.connection_density)
+    
+    market_ids = list(state.markets.markets.keys())
+    has_markets = len(market_ids) > 0
     
     # Send initial state
     initial_banks = [
@@ -100,6 +110,10 @@ async def simulation_event_generator(config: SimulationConfig, featherless_fn):
                 
             neighbor_defaults = _count_neighbor_defaults(bank, state.banks)
             observation = bank.observe_local_state(neighbor_defaults)
+            
+            # Inject market availability so the ML policy knows whether markets exist
+            observation["has_markets"] = has_markets
+            
             priority = None
             if config.use_featherless and featherless_fn:
                 try:
@@ -110,7 +124,17 @@ async def simulation_event_generator(config: SimulationConfig, featherless_fn):
             ml_action, reason = select_action(observation, priority)
             action = BankAction[ml_action.value]
             counterparty_id = _select_counterparty(bank, state.banks, action)
-            market_id = random.choice(["BANK_INDEX", "FIN_SERVICES"])
+            market_id = random.choice(market_ids) if has_markets else None
+            
+            # If market action but no markets, switch to lending or hoard
+            if action in [BankAction.INVEST_MARKET, BankAction.DIVEST_MARKET] and not has_markets:
+                other_banks = [b for b in state.banks if b.bank_id != bank.bank_id and not b.is_defaulted]
+                if len(other_banks) > 0:
+                    action = BankAction.INCREASE_LENDING
+                    counterparty_id = _select_counterparty(bank, state.banks, action)
+                else:
+                    action = BankAction.HOARD_CASH
+                reason = f"No markets available - switching to {action.value}"
             
             # Get per-bank amounts if available
             if config.bank_configs and bank_idx < len(config.bank_configs):

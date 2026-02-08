@@ -35,6 +35,7 @@ class InteractiveSimulationRequest(BaseModel):
     num_banks: int = Field(default=20, ge=1, le=100)
     num_steps: int = Field(default=30, ge=1, le=200)
     node_parameters: Optional[list] = None
+    market_nodes: Optional[list] = Field(default=None, description="Market nodes from the UI: [{id, name}]")
     connection_density: float = Field(default=0.2, ge=0, le=1)
     use_featherless: bool = Field(default=True)
     use_game_theory: bool = Field(default=True, description="Use Nash equilibrium game theory")
@@ -47,6 +48,7 @@ async def interactive_simulation_generator(config: SimulationConfig, control_que
         _count_neighbor_defaults, _select_counterparty, _propagate_cascades,
         create_banks
     )
+    from app.core.market import create_markets_from_config
     from app.core.bank import BankAction
     from app.ml.policy import select_action
     import random
@@ -54,7 +56,17 @@ async def interactive_simulation_generator(config: SimulationConfig, control_que
     GLOBAL_LEDGER.clear()
     state = SimulationState()
     state.banks = create_banks(config.num_banks, bank_configs=config.bank_configs)
-    state.markets = create_default_markets()
+    
+    # Use market configs from UI if provided, otherwise use defaults
+    if config.market_configs and len(config.market_configs) > 0:
+        state.markets = create_markets_from_config(config.market_configs)
+        print(f"[INTERACTIVE SIM] Using {len(config.market_configs)} user-defined markets")
+    else:
+        # No markets — create empty market system
+        from app.core.market import MarketSystem
+        state.markets = MarketSystem()
+        print(f"[INTERACTIVE SIM] No markets defined by user")
+    
     _create_interbank_network(state.banks, connection_density=config.connection_density)
     
     print(f"[INTERACTIVE SIM] Initialized with {len(state.banks)} banks")
@@ -150,7 +162,9 @@ async def interactive_simulation_generator(config: SimulationConfig, control_que
         
         # Process each bank
         # Track market flows this step for price updates
-        step_market_flows = {"BANK_INDEX": 0.0, "FIN_SERVICES": 0.0}
+        market_ids = list(state.markets.markets.keys())
+        step_market_flows = {mid: 0.0 for mid in market_ids}
+        has_markets = len(market_ids) > 0
         
         for bank_idx, bank in enumerate(state.banks):
             if bank.is_defaulted:
@@ -158,6 +172,10 @@ async def interactive_simulation_generator(config: SimulationConfig, control_que
                 
             neighbor_defaults = _count_neighbor_defaults(bank, state.banks)
             observation = bank.observe_local_state(neighbor_defaults)
+            
+            # Inject market availability so the ML policy knows whether markets exist
+            observation["has_markets"] = has_markets
+            
             priority = None
             if config.use_featherless and featherless_fn:
                 try:
@@ -168,7 +186,7 @@ async def interactive_simulation_generator(config: SimulationConfig, control_que
             ml_action, reason = select_action(observation, priority)
             action = BankAction[ml_action.value]
             counterparty_id = _select_counterparty(bank, state.banks, action)
-            market_id = random.choice(["BANK_INDEX", "FIN_SERVICES"])
+            market_id = random.choice(market_ids) if has_markets else None
             
             # Fix: If lending action but no valid counterparty (e.g., only 1 bank), switch to market action
             if action in [BankAction.INCREASE_LENDING, BankAction.DECREASE_LENDING] and counterparty_id is None:
@@ -177,11 +195,25 @@ async def interactive_simulation_generator(config: SimulationConfig, control_que
                 
                 if len(other_banks) == 0:
                     # Only bank in the system or all others defaulted - can't do interbank lending
-                    # Switch to market investment instead
-                    action = BankAction.INVEST_MARKET if bank.balance_sheet.cash > 30 else BankAction.HOARD_CASH
+                    # Switch to market investment if markets exist, otherwise hoard cash
+                    if has_markets and bank.balance_sheet.cash > 30:
+                        action = BankAction.INVEST_MARKET
+                    else:
+                        action = BankAction.HOARD_CASH
                     reason = f"No lending counterparties available - switching to {action.value}"
                     counterparty_id = None
                     print(f"[SOLO BANK FIX] Bank {bank.bank_id}: No counterparties, action changed to {action.value}")
+            
+            # Fix: If market action but no markets exist, switch to lending or hoard
+            if action in [BankAction.INVEST_MARKET, BankAction.DIVEST_MARKET] and not has_markets:
+                other_banks = [b for b in state.banks if b.bank_id != bank.bank_id and not b.is_defaulted]
+                if len(other_banks) > 0 and bank.balance_sheet.cash > 15:
+                    action = BankAction.INCREASE_LENDING
+                    counterparty_id = _select_counterparty(bank, state.banks, action)
+                else:
+                    action = BankAction.HOARD_CASH
+                reason = f"No markets available - switching to {action.value}"
+                print(f"[NO MARKET FIX] Bank {bank.bank_id}: No markets, action changed to {action.value}")
             
             # Calculate dynamic transaction amounts using game theory principles
             ratios = bank.balance_sheet.compute_ratios()
@@ -517,6 +549,19 @@ async def start_interactive_simulation(
             for node in body.node_parameters
         ]
     
+    # Convert market nodes to market configs
+    market_configs = None
+    if body.market_nodes and len(body.market_nodes) > 0:
+        market_configs = [
+            {
+                "market_id": m.get("id", f"MARKET_{i}"),
+                "name": m.get("name", f"Market {i+1}"),
+                "initial_price": m.get("initial_price", 100.0),
+            }
+            for i, m in enumerate(body.market_nodes)
+        ]
+        print(f"[INTERACTIVE SIM] Received {len(market_configs)} market configs from UI")
+    
     config = SimulationConfig(
         num_banks=body.num_banks,
         num_steps=body.num_steps,
@@ -527,6 +572,7 @@ async def start_interactive_simulation(
         investment_amount=15.0,
         connection_density=body.connection_density,
         bank_configs=bank_configs,
+        market_configs=market_configs,
     )
     
     # Create new control queue
@@ -581,4 +627,55 @@ async def get_simulation_status(
         "is_running": ACTIVE_SIMULATION["is_running"],
         "is_paused": ACTIVE_SIMULATION["is_paused"],
         "current_step": ACTIVE_SIMULATION["state"].time_step if ACTIVE_SIMULATION["state"] else None,
+    }
+
+
+@router.post("/trigger_default")
+async def trigger_default(
+    command: SimulationCommand,
+    current_user: Optional[dict] = Depends(get_optional_user),
+):
+    """Manually trigger a bank default for cascade testing."""
+    if not ACTIVE_SIMULATION["is_running"]:
+        raise HTTPException(status_code=404, detail="No active simulation")
+    
+    if not command.bank_id:
+        raise HTTPException(status_code=400, detail="bank_id is required")
+    
+    state = ACTIVE_SIMULATION["state"]
+    if not state:
+        raise HTTPException(status_code=404, detail="No simulation state available")
+    
+    # Find the bank
+    target_bank = None
+    for bank in state.banks:
+        if bank.bank_id == command.bank_id:
+            target_bank = bank
+            break
+    
+    if not target_bank:
+        raise HTTPException(status_code=404, detail=f"Bank {command.bank_id} not found")
+    
+    if target_bank.is_defaulted:
+        raise HTTPException(status_code=400, detail=f"Bank {command.bank_id} is already defaulted")
+    
+    # Force default by draining equity
+    target_bank.balance_sheet.equity = -1
+    target_bank.is_defaulted = True
+    target_bank.default_time = state.time_step
+    state.defaults_this_step.append(command.bank_id)
+    
+    # Trigger cascade propagation
+    from app.core.simulation_v2 import _propagate_cascades
+    cascade_count = _propagate_cascades(state, state.time_step, verbose=False)
+    
+    # Get all affected banks
+    affected_banks = [command.bank_id] + state.defaults_this_step[1:]  # Initial + cascaded
+    
+    return {
+        "status": "default_triggered",
+        "bank_id": command.bank_id,
+        "cascade_count": cascade_count,
+        "affected_banks": affected_banks,
+        "cascade_depth": state.cascade_depth,
     }

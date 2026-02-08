@@ -21,6 +21,10 @@ import SimulationResultCard from "./SimulationResultCard";
 import BankDashboard from "./BankDashboard";
 import MarketDashboard from "./MarketDashboard";
 import LiveActivityFeed from "./LiveActivityFeed";
+import CascadeVisualization from "./CascadeVisualization";
+import CascadePlayer from "./CascadePlayer";
+import RiskLegend from "./RiskLegend";
+import HistoricalTrendsChart from "./HistoricalTrendsChart";
 
 const FinancialNetworkPlayground = () => {
   const { user } = useUser();
@@ -126,8 +130,84 @@ const FinancialNetworkPlayground = () => {
   // Alerts and events
   const [alerts, setAlerts] = useState([]);
 
+  // Cascade state
+  const [cascadeEvents, setCascadeEvents] = useState([]);
+  const [cascadingBanks, setCascadingBanks] = useState([]);
+  const [cascadeTrigger, setCascadeTrigger] = useState(null);
+  const [cascadePlayerActive, setCascadePlayerActive] = useState(false);
+  const [showCascadePanel, setShowCascadePanel] = useState(false);
+
+  // Risk heatmap state
+  const [showRiskHeatmap, setShowRiskHeatmap] = useState(false);
+  
+  // Historical trends state
+  const [showTrendsPanel, setShowTrendsPanel] = useState(false);
+  const [selectedBanksForComparison, setSelectedBanksForComparison] = useState([]);
+
   // Simulation engine
   const simulationInterval = useRef(null);
+
+  // Trigger a bank default for cascade testing
+  const triggerBankDefault = async (bankId) => {
+    try {
+      const response = await fetch('http://localhost:8000/api/interactive/trigger_default', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bank_id: bankId }),
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Default triggered:', result);
+        
+        // Add cascade event to history
+        const cascadeEvent = {
+          time_step: currentSimulationStep || 0,
+          cascade_count: result.cascade_count,
+          cascade_depth: result.cascade_depth,
+          affected_banks: result.affected_banks,
+        };
+        
+        setCascadeEvents(prev => [...prev, cascadeEvent]);
+        setCascadingBanks(result.affected_banks || []);
+        setCascadeTrigger(bankId);
+        setShowCascadePanel(true);
+        
+        // Clear cascade animation after 5 seconds
+        setTimeout(() => {
+          setCascadingBanks([]);
+          setCascadeTrigger(null);
+        }, 5000);
+        
+        return result;
+      } else {
+        console.error('Failed to trigger default:', await response.text());
+      }
+    } catch (error) {
+      console.error('Error triggering default:', error);
+    }
+  };
+
+  // Cascade player step change handler
+  const handleCascadeStepChange = (step) => {
+    // Update visualization based on cascade playback step
+    const selectedCascade = cascadeEvents[cascadeEvents.length - 1];
+    if (selectedCascade && selectedCascade.affected_banks) {
+      setCascadingBanks(selectedCascade.affected_banks.slice(0, step));
+      if (step > 0) {
+        setCascadeTrigger(selectedCascade.affected_banks[0]);
+      } else {
+        setCascadeTrigger(null);
+      }
+    }
+  };
+
+  // Replay cascade animation
+  const handleReplayCascade = (cascade) => {
+    setCascadePlayerActive(true);
+    setCascadingBanks([]);
+    setCascadeTrigger(null);
+  };
 
   useEffect(() => {
     if (isSimulating) {
@@ -261,23 +341,56 @@ const FinancialNetworkPlayground = () => {
   };
 
   const handleAddInstitution = (type) => {
-    const bankCount = institutions.filter(i => i.type === 'bank' && !i.isMarket).length;
-    const newId = `bank${bankCount + 1}`;
-    const newInst = {
-      id: newId,
-      type,
-      name: `Bank ${bankCount + 1}`,
-      position: { x: Math.random() * 600 + 50, y: Math.random() * 400 + 50 },
-      capital: 100,
-      target: 3.0,
-      risk: 0.3,
-      // Interbank parameters
-      interbankRate: 2.5,
-      haircut: 15,
-      reserveRatio: 10,
-    };
-    setInstitutions((prev) => [...prev, newInst]);
-    setSelectedInstitution(newInst);
+    if (type === 'market') {
+      // Add a market node
+      const marketCount = institutions.filter(i => i.type === 'market' || i.isMarket).length;
+      const marketNames = ['Bank Index Fund', 'Financial Services', 'Tech Sector', 'Real Estate', 'Commodities', 'Bond Market'];
+      const marketIds = ['BANK_INDEX', 'FIN_SERVICES', 'TECH_SECTOR', 'REAL_ESTATE', 'COMMODITIES', 'BOND_MARKET'];
+      const idx = marketCount % marketIds.length;
+      // Avoid duplicate market IDs
+      let marketId = marketIds[idx];
+      let marketName = marketNames[idx];
+      if (institutions.find(i => i.id === marketId)) {
+        marketId = `MARKET_${Date.now()}`;
+        marketName = `Market ${marketCount + 1}`;
+      }
+      const newMarket = {
+        id: marketId,
+        type: 'market',
+        name: marketName,
+        position: { x: Math.random() * 600 + 50, y: Math.random() * 400 + 50 },
+        capital: 0,
+        target: 1.0,
+        risk: 0.0,
+        isMarket: true,
+      };
+      setInstitutions((prev) => [...prev, newMarket]);
+      setSelectedInstitution(newMarket);
+    } else {
+      // Add a bank node
+      const bankCount = institutions.filter(i => i.type === 'bank' && !i.isMarket).length;
+      const newId = `bank${bankCount + 1}`;
+      // Ensure unique ID
+      let finalId = newId;
+      if (institutions.find(i => i.id === finalId)) {
+        finalId = `bank${Date.now()}`;
+      }
+      const newInst = {
+        id: finalId,
+        type,
+        name: `Bank ${bankCount + 1}`,
+        position: { x: Math.random() * 600 + 50, y: Math.random() * 400 + 50 },
+        capital: 100,
+        target: 3.0,
+        risk: 0.3,
+        // Interbank parameters
+        interbankRate: 2.5,
+        haircut: 15,
+        reserveRatio: 10,
+      };
+      setInstitutions((prev) => [...prev, newInst]);
+      setSelectedInstitution(newInst);
+    }
   };
 
   const handleAddConnection = (source, target, type, exposure) => {
@@ -689,28 +802,7 @@ const FinancialNetworkPlayground = () => {
               onAddInstitution={handleAddInstitution}
               institutions={institutions}
               onClearAll={() => {
-                setInstitutions([
-                  {
-                    id: "BANK_INDEX",
-                    type: "market",
-                    name: "Bank Index Fund",
-                    position: { x: 250, y: 350 },
-                    capital: 0,
-                    target: 1.0,
-                    risk: 0.0,
-                    isMarket: true,
-                  },
-                  {
-                    id: "FIN_SERVICES",
-                    type: "market",
-                    name: "Financial Services",
-                    position: { x: 450, y: 350 },
-                    capital: 0,
-                    target: 1.0,
-                    risk: 0.0,
-                    isMarket: true,
-                  },
-                ]);
+                setInstitutions([]);
                 setConnections([]);
                 setRealtimeConnections([]);
                 setActiveTransactions([]);
@@ -773,6 +865,9 @@ const FinancialNetworkPlayground = () => {
             tool={tool}
             activeTransactions={activeTransactions}
             realtimeConnections={realtimeConnections}
+            cascadingBanks={cascadingBanks}
+            cascadeTrigger={cascadeTrigger}
+            showRiskHeatmap={showRiskHeatmap}
           />
 
           {/* Connection Hint - Bottom Left */}
@@ -783,6 +878,96 @@ const FinancialNetworkPlayground = () => {
             </kbd>{" "}
             + drag to connect nodes
           </div>
+
+          {/* Risk Heatmap Legend - Top Left */}
+          <div className="absolute top-24 left-6 z-40">
+            <RiskLegend 
+              showHeatmap={showRiskHeatmap}
+              onToggle={() => setShowRiskHeatmap(!showRiskHeatmap)}
+            />
+          </div>
+
+          {/* Historical Trends Button - Top Right */}
+          {historicalData.length > 0 && (
+            <div className="absolute top-24 right-96 z-40">
+              <button
+                onClick={() => setShowTrendsPanel(!showTrendsPanel)}
+                className={`px-4 py-2 rounded-lg shadow-lg font-semibold transition-all duration-200 flex items-center gap-2 ${
+                  showTrendsPanel
+                    ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white'
+                    : 'bg-white/90 text-gray-700 border-2 border-gray-300 hover:bg-gray-50'
+                }`}
+                title="Show historical trends"
+              >
+                <span>📊</span>
+                <span>Trends</span>
+              </button>
+            </div>
+          )}
+
+          {/* Historical Trends Panel - Full Right Side Overlay */}
+          {showTrendsPanel && historicalData.length > 0 && (
+            <div className="absolute top-0 right-0 bottom-0 w-[500px] bg-white/95 backdrop-blur-xl border-l-2 border-gray-300 shadow-2xl overflow-y-auto z-50">
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                    <span>📈</span>
+                    <span>Historical Analytics</span>
+                  </h2>
+                  <button
+                    onClick={() => setShowTrendsPanel(false)}
+                    className="bg-gray-200 hover:bg-gray-300 rounded-full p-2 transition-all"
+                    title="Close trends panel"
+                  >
+                    <span className="text-gray-600 font-bold text-lg leading-none">×</span>
+                  </button>
+                </div>
+                
+                {/* Bank Selection for Comparison */}
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h3 className="text-xs font-bold text-gray-700 mb-2">Select Banks to Compare:</h3>
+                  <div className="grid grid-cols-4 gap-2">
+                    {institutions
+                      .filter(i => i.type === 'bank')
+                      .slice(0, 8)
+                      .map(bank => {
+                        const bankId = parseInt(bank.id.replace('bank', '')) - 1;
+                        const isSelected = selectedBanksForComparison.includes(bankId);
+                        return (
+                          <button
+                            key={bank.id}
+                            onClick={() => {
+                              if (isSelected) {
+                                setSelectedBanksForComparison(prev => prev.filter(id => id !== bankId));
+                              } else if (selectedBanksForComparison.length < 6) {
+                                setSelectedBanksForComparison(prev => [...prev, bankId]);
+                              }
+                            }}
+                            className={`px-2 py-1 text-xs font-semibold rounded transition-all ${
+                              isSelected
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                            }`}
+                            disabled={!isSelected && selectedBanksForComparison.length >= 6}
+                          >
+                            B{bankId}
+                          </button>
+                        );
+                      })}
+                  </div>
+                  <p className="text-xs text-gray-600 mt-2">
+                    {selectedBanksForComparison.length}/6 banks selected
+                  </p>
+                </div>
+
+                <HistoricalTrendsChart
+                  historicalData={historicalData}
+                  selectedBanks={selectedBanksForComparison}
+                  showSystemMetrics={true}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Alerts - Bottom Left (Above Hint) */}
           <div className="absolute bottom-20 left-6 w-72 max-h-64 overflow-y-auto space-y-2 scrollbar-hide">
@@ -812,6 +997,51 @@ const FinancialNetworkPlayground = () => {
               transactions={allTransactions}
               currentStep={currentSimulationStep}
             />
+          )}
+
+          {/* Cascade Visualization Panel - Bottom Right */}
+          {showCascadePanel && cascadeEvents.length > 0 && (
+            <div className="absolute bottom-6 right-6 w-96 max-h-[600px] overflow-hidden">
+              <div className="relative">
+                <button
+                  onClick={() => setShowCascadePanel(false)}
+                  className="absolute top-4 right-4 z-10 bg-white/90 hover:bg-white rounded-full p-2 shadow-lg transition-all"
+                  title="Close cascade panel"
+                >
+                  <span className="text-gray-600 font-bold text-lg leading-none">×</span>
+                </button>
+                <CascadeVisualization
+                  cascadeEvents={cascadeEvents}
+                  banks={institutions}
+                  onReplayCascade={handleReplayCascade}
+                />
+                {cascadeEvents.length > 0 && (
+                  <CascadePlayer
+                    cascade={cascadeEvents[cascadeEvents.length - 1]}
+                    onStepChange={handleCascadeStepChange}
+                    isPlaying={cascadePlayerActive}
+                    onPlayToggle={setCascadePlayerActive}
+                  />
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Trigger Default Button - For Testing */}
+          {isSimulationRunning && selectedInstitution && selectedInstitution.type === 'bank' && (
+            <div className="absolute top-24 right-6 z-50">
+              <button
+                onClick={() => {
+                  const bankNum = parseInt(selectedInstitution.id.replace('bank', ''));
+                  triggerBankDefault(bankNum);
+                }}
+                className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-4 py-2 rounded-lg shadow-lg font-semibold transition-all duration-200 flex items-center gap-2"
+                title="Trigger default for cascade testing"
+              >
+                <span>💥</span>
+                <span>Trigger Default</span>
+              </button>
+            </div>
           )}
         </div>
 

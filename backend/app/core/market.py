@@ -63,8 +63,6 @@ class MarketSystem:
         self._pending_flows: Dict[str, float] = {}
 
     def add_market(self, market_id: str, name: str, initial_price: float = 100.0):
-        if len(self.markets) >= 2:
-            raise ValueError("Maximum 2 markets allowed")
         self.markets[market_id] = Market(market_id, name, initial_price)
         self._pending_flows[market_id] = 0.0
 
@@ -89,4 +87,20 @@ def create_default_markets() -> MarketSystem:
     system = MarketSystem()
     system.add_market("BANK_INDEX", "Bank Sector Index", 100.0)
     system.add_market("FIN_SERVICES", "Financial Services Index", 100.0)
+    return system
+
+
+def create_markets_from_config(market_configs: list) -> MarketSystem:
+    """Create a MarketSystem from user-provided market configurations.
+    
+    Each config should have: {"market_id": str, "name": str, "initial_price": float}
+    If no configs provided, returns an empty MarketSystem (no markets).
+    """
+    system = MarketSystem()
+    for mc in market_configs:
+        system.add_market(
+            market_id=mc.get("market_id", mc.get("id", f"MARKET_{len(system.markets)}")),
+            name=mc.get("name", f"Market {len(system.markets) + 1}"),
+            initial_price=mc.get("initial_price", 100.0),
+        )
     return system

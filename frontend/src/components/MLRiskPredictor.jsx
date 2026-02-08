@@ -6,6 +6,8 @@ const MLRiskPredictor = ({ bank, marketState = {} }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isLive, setIsLive] = useState(false);
+  const [showFeatures, setShowFeatures] = useState(false);
+  const [sentFeatures, setSentFeatures] = useState(null);
 
   // Fetch risk prediction from ML model
   const fetchRiskPrediction = async () => {
@@ -15,42 +17,46 @@ const MLRiskPredictor = ({ bank, marketState = {} }) => {
     setError(null);
     
     try {
+      const requestBody = {
+        borrower_state: {
+          capital_ratio: bank.capital_ratio || 0.08,
+          leverage: bank.leverage || 10.0,
+          liquidity_ratio: bank.liquidity_ratio || 0.2,
+          equity: bank.capital || 100,
+          cash: bank.cash || 50,
+          market_exposure: bank.investments || 0,
+          past_defaults: bank.past_defaults || 0,
+          investment_volatility: bank.investment_volatility || 0,
+          risk_appetite: bank.risk_appetite || 0.5,
+        },
+        lender_state: {
+          capital_ratio: 0.10,
+          equity: 100,
+        },
+        network_metrics: {
+          centrality: 0.3,
+          degree: 5,
+          upstream_exposure: 30,
+          downstream_exposure: 30,
+          clustering_coefficient: 0.4,
+        },
+        market_state: {
+          stress: marketState.stress || 0.3,
+          volatility: marketState.volatility || 0.02,
+          liquidity_available: 1000,
+        },
+        exposure_amount: 15.0,
+        use_ml: true,
+      };
+      
+      setSentFeatures(requestBody.borrower_state);
+      
       const response = await fetch('http://localhost:8000/api/risk/assess', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          borrower_state: {
-            capital_ratio: bank.capital_ratio || 0.08,
-            leverage: bank.leverage || 10.0,
-            liquidity_ratio: bank.liquidity_ratio || 0.2,
-            equity: bank.capital || 100,
-            cash: bank.cash || 50,
-            market_exposure: bank.investments || 0,
-            past_defaults: bank.past_defaults || 0,
-            investment_volatility: bank.investment_volatility || 0,
-            risk_appetite: bank.risk_appetite || 0.5,
-          },
-          lender_state: {
-            capital_ratio: 0.10,
-            equity: 100,
-          },
-          network_metrics: {
-            centrality: 0.3,
-            degree: 5,
-            upstream_exposure: 30,
-            downstream_exposure: 30,
-            clustering_coefficient: 0.4,
-          },
-          market_state: {
-            stress: marketState.stress || 0.3,
-            volatility: marketState.volatility || 0.02,
-            liquidity_available: 1000,
-          },
-          exposure_amount: 15.0,
-          use_ml: true,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -134,13 +140,22 @@ const MLRiskPredictor = ({ bank, marketState = {} }) => {
           <span>AI Risk Prediction</span>
           <span className="text-xs bg-purple-600 text-white px-2 py-0.5 rounded-full">XGBoost ML</span>
         </h3>
-        <button
-          onClick={fetchRiskPrediction}
-          disabled={loading}
-          className="px-2 py-1 bg-purple-600 text-white text-xs rounded hover:bg-purple-700 disabled:opacity-50"
-        >
-          {loading ? '⏳' : '🔄'} Refresh
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowFeatures(!showFeatures)}
+            className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded border border-gray-300"
+            title="Show input features"
+          >
+            {showFeatures ? '📊' : '🔍'}
+          </button>
+          <button
+            onClick={fetchRiskPrediction}
+            disabled={loading}
+            className="px-2 py-1 bg-purple-600 text-white text-xs rounded hover:bg-purple-700 disabled:opacity-50"
+          >
+            {loading ? '⏳' : '🔄'} Refresh
+          </button>
+        </div>
       </div>
 
       {loading && (
@@ -225,6 +240,74 @@ const MLRiskPredictor = ({ bank, marketState = {} }) => {
             </p>
           </div>
         </>
+      )}
+
+      {/* Feature Inspector - Debug Panel */}
+      {showFeatures && sentFeatures && (
+        <div className="mt-4 p-3 bg-white border-2 border-gray-300 rounded-lg shadow-inner">
+          <h4 className="text-xs font-bold text-gray-800 mb-2 flex items-center gap-2">
+            <span>🔍</span>
+            <span>ML Model Input Features</span>
+          </h4>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="bg-gray-50 p-2 rounded border border-gray-200">
+              <div className="font-semibold text-gray-600">Capital Ratio</div>
+              <div className={`text-lg font-bold mt-1 ${sentFeatures.capital_ratio < 0.08 ? 'text-red-600' : 'text-green-600'}`}>
+                {(sentFeatures.capital_ratio * 100).toFixed(2)}%
+              </div>
+              {sentFeatures.capital_ratio < 0.08 && (
+                <div className="text-red-600 font-semibold mt-1">⚠️ Below 8% minimum!</div>
+              )}
+            </div>
+            <div className="bg-gray-50 p-2 rounded border border-gray-200">
+              <div className="font-semibold text-gray-600">Leverage</div>
+              <div className={`text-lg font-bold mt-1 ${sentFeatures.leverage > 10 ? 'text-red-600' : sentFeatures.leverage > 5 ? 'text-orange-600' : 'text-green-600'}`}>
+                {sentFeatures.leverage.toFixed(2)}x
+              </div>
+              {sentFeatures.leverage > 10 && (
+                <div className="text-red-600 font-semibold mt-1">⚠️ Excessive leverage!</div>
+              )}
+            </div>
+            <div className="bg-gray-50 p-2 rounded border border-gray-200">
+              <div className="font-semibold text-gray-600">Liquidity Ratio</div>
+              <div className={`text-lg font-bold mt-1 ${sentFeatures.liquidity_ratio < 0.1 ? 'text-red-600' : 'text-green-600'}`}>
+                {(sentFeatures.liquidity_ratio * 100).toFixed(1)}%
+              </div>
+            </div>
+            <div className="bg-gray-50 p-2 rounded border border-gray-200">
+              <div className="font-semibold text-gray-600">Equity</div>
+              <div className="text-lg font-bold mt-1 text-gray-800">
+                ${sentFeatures.equity.toFixed(1)}M
+              </div>
+            </div>
+            <div className="bg-gray-50 p-2 rounded border border-gray-200">
+              <div className="font-semibold text-gray-600">Cash</div>
+              <div className="text-lg font-bold mt-1 text-gray-800">
+                ${sentFeatures.cash.toFixed(1)}M
+              </div>
+            </div>
+            <div className="bg-gray-50 p-2 rounded border border-gray-200">
+              <div className="font-semibold text-gray-600">Past Defaults</div>
+              <div className={`text-lg font-bold mt-1 ${sentFeatures.past_defaults > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                {sentFeatures.past_defaults}
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 p-2 bg-blue-50 border border-blue-300 rounded">
+            <p className="text-xs text-blue-900 leading-relaxed">
+              <span className="font-bold">💡 Why is it rejecting?</span><br/>
+              {sentFeatures.leverage > 10 ? 
+                '• Leverage > 10x is extremely risky (you borrowed too much relative to equity)' : 
+              sentFeatures.capital_ratio < 0.08 ? 
+                '• Capital ratio < 8% violates regulatory minimums' :
+                '• Model sees high risk based on other factors'}
+              <br/>
+              {sentFeatures.leverage > 10 && `• Current: ${sentFeatures.leverage.toFixed(1)}x leverage = Only ${(sentFeatures.capital_ratio * 100).toFixed(1)}% capital cushion`}
+              <br/>
+              • To improve: Reduce lending, raise more capital, or pay down debt
+            </p>
+          </div>
+        </div>
       )}
     </div>
   );

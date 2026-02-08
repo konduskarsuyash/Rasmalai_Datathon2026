@@ -32,23 +32,34 @@ class SimulationConfig:
     investment_amount: float = 10.0
     connection_density: float = 0.2
     bank_configs: Optional[List[BankConfig]] = None
+    market_configs: Optional[list] = None  # [{"market_id": str, "name": str}]
 
 
 @dataclass
 class SimulationState:
     time_step: int = 0
     banks: List[Bank] = field(default_factory=list)
-    markets: MarketSystem = field(default_factory=create_default_markets)
+    markets: MarketSystem = field(default_factory=MarketSystem)
     defaults_this_step: List[int] = field(default_factory=list)
     cascade_depth: int = 0
 
 
 def run_simulation_v2(config: SimulationConfig, featherless_fn: Optional[Callable] = None) -> Dict:
+    from .market import create_markets_from_config
     GLOBAL_LEDGER.clear()
     state = SimulationState()
     state.banks = create_banks(config.num_banks, bank_configs=config.bank_configs)
-    state.markets = create_default_markets()
+    
+    # Use market_configs if provided, otherwise use defaults
+    if config.market_configs and len(config.market_configs) > 0:
+        state.markets = create_markets_from_config(config.market_configs)
+    else:
+        state.markets = create_default_markets()
+    
     _create_interbank_network(state.banks, connection_density=config.connection_density)
+
+    market_ids = list(state.markets.markets.keys())
+    has_markets = len(market_ids) > 0
 
     history = {
         "steps": [],
@@ -65,13 +76,16 @@ def run_simulation_v2(config: SimulationConfig, featherless_fn: Optional[Callabl
         state.defaults_this_step = []
         state.cascade_depth = 0
         step_log = {"time": t, "actions": [], "defaults": [], "cascades": 0, "market_flows": {}}
-        market_flows = {"BANK_INDEX": 0.0, "FIN_SERVICES": 0.0}
+        market_flows = {mid: 0.0 for mid in market_ids}
 
         for bank_idx, bank in enumerate(state.banks):
             if bank.is_defaulted:
                 continue
             neighbor_defaults = _count_neighbor_defaults(bank, state.banks)
             observation = bank.observe_local_state(neighbor_defaults)
+            
+            # Inject market availability so the ML policy knows whether markets exist
+            observation["has_markets"] = has_markets
             
             # Calculate network default rate for game theory
             total_defaults = sum(1 for b in state.banks if b.is_defaulted)
@@ -94,7 +108,17 @@ def run_simulation_v2(config: SimulationConfig, featherless_fn: Optional[Callabl
             )
             action = BankAction[ml_action.value]
             counterparty_id = _select_counterparty(bank, state.banks, action)
-            market_id = random.choice(["BANK_INDEX", "FIN_SERVICES"])
+            market_id = random.choice(market_ids) if has_markets else None
+            
+            # If market action but no markets, switch to lending or hoard
+            if action in [BankAction.INVEST_MARKET, BankAction.DIVEST_MARKET] and not has_markets:
+                other_banks = [b for b in state.banks if b.bank_id != bank.bank_id and not b.is_defaulted]
+                if len(other_banks) > 0:
+                    action = BankAction.INCREASE_LENDING
+                    counterparty_id = _select_counterparty(bank, state.banks, action)
+                else:
+                    action = BankAction.HOARD_CASH
+                reason = f"No markets available - switching to {action.value}"
             
             # Calculate dynamic transaction amounts based on bank characteristics
             ratios = bank.balance_sheet.compute_ratios()
@@ -132,10 +156,10 @@ def run_simulation_v2(config: SimulationConfig, featherless_fn: Optional[Callabl
                 amount=amount,
                 reason=reason,
             )
-            if action == BankAction.INVEST_MARKET:
-                market_flows[market_id] += investment_amt
-            elif action == BankAction.DIVEST_MARKET:
-                market_flows[market_id] -= investment_amt
+            if action == BankAction.INVEST_MARKET and market_id in market_flows:
+                market_flows[market_id] += amount
+            elif action == BankAction.DIVEST_MARKET and market_id in market_flows:
+                market_flows[market_id] -= amount
             step_log["actions"].append({
                 "bank_id": bank.bank_id,
                 "action": action.value,

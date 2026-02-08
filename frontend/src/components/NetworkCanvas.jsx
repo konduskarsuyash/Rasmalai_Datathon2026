@@ -15,6 +15,9 @@ const NetworkCanvas = ({
   tool = "select",
   activeTransactions = [],
   realtimeConnections = [],
+  cascadingBanks = [], // Array of bank IDs currently in cascade
+  cascadeTrigger = null, // ID of bank that triggered cascade
+  showRiskHeatmap = false, // Show risk-based color overlay
 }) => {
   const canvasRef = useRef(null);
   const [dragging, setDragging] = useState(null);
@@ -22,7 +25,53 @@ const NetworkCanvas = ({
   const [pulsePhase, setPulsePhase] = useState(0);
   const [connectingFrom, setConnectingFrom] = useState(null);
   const [connectionEnd, setConnectionEnd] = useState(null);
+  const [hoveredInstitution, setHoveredInstitution] = useState(null);
   const animationFrameRef = useRef(null);
+
+  // Calculate risk score for an institution (0-1 scale)
+  const calculateRiskScore = (inst) => {
+    if (inst.type !== 'bank' || !inst.type) return 0;
+    
+    // Risk factors
+    const leverage = inst.leverage || 0;
+    const capitalRatio = inst.capital_ratio || 0.1;
+    const liquidityRatio = inst.liquidity_ratio || 0.2;
+    const isDefaulted = inst.is_defaulted || false;
+    
+    if (isDefaulted) return 1.0; // Maximum risk
+    
+    // Calculate composite risk score
+    let riskScore = 0;
+    
+    // Leverage risk (0-0.4)
+    if (leverage > 15) riskScore += 0.4;
+    else if (leverage > 10) riskScore += 0.3;
+    else if (leverage > 5) riskScore += 0.15;
+    else riskScore += leverage / 50;
+    
+    // Capital adequacy risk (0-0.3)
+    if (capitalRatio < 0.05) riskScore += 0.3;
+    else if (capitalRatio < 0.08) riskScore += 0.2;
+    else if (capitalRatio < 0.10) riskScore += 0.1;
+    else riskScore += Math.max(0, (0.15 - capitalRatio) * 2);
+    
+    // Liquidity risk (0-0.3)
+    if (liquidityRatio < 0.05) riskScore += 0.3;
+    else if (liquidityRatio < 0.10) riskScore += 0.2;
+    else if (liquidityRatio < 0.15) riskScore += 0.1;
+    else riskScore += Math.max(0, (0.25 - liquidityRatio));
+    
+    return Math.min(1, riskScore);
+  };
+
+  // Get risk color based on score
+  const getRiskColor = (riskScore) => {
+    if (riskScore < 0.2) return { main: '#10b981', glow: '#34d399', label: 'Very Low' }; // Green
+    if (riskScore < 0.4) return { main: '#eab308', glow: '#fde047', label: 'Low' }; // Yellow
+    if (riskScore < 0.6) return { main: '#f97316', glow: '#fb923c', label: 'Medium' }; // Orange
+    if (riskScore < 0.8) return { main: '#ef4444', glow: '#f87171', label: 'High' }; // Red
+    return { main: '#b91c1c', glow: '#dc2626', label: 'Very High' }; // Dark Red
+  };
 
   // Animation loop
   useEffect(() => {
@@ -135,9 +184,11 @@ const NetworkCanvas = ({
       }
     });
 
-    // Draw institutions with pulse effect
+    // Draw institutions with pulse effect and cascade animations
     institutions.forEach((inst) => {
-      drawModernInstitution(ctx, inst, selectedInstitution?.id === inst.id);
+      const isCascading = inst.type === 'bank' && cascadingBanks.includes(parseInt(inst.id.replace('bank', '')));
+      const isTrigger = inst.type === 'bank' && cascadeTrigger === parseInt(inst.id.replace('bank', ''));
+      drawModernInstitution(ctx, inst, selectedInstitution?.id === inst.id, isCascading, isTrigger);
     });
 
     // Draw temporary connection line while dragging
@@ -344,10 +395,36 @@ const NetworkCanvas = ({
     ctx.fillText(`$${conn.exposure}M`, midX, midY);
   };
 
-  const drawModernInstitution = (ctx, inst, isSelected) => {
+  const drawModernInstitution = (ctx, inst, isSelected, isCascading = false, isTrigger = false) => {
     const { x, y } = inst.position;
     const radius = 45;
     const pulseScale = 1 + Math.sin(pulsePhase) * 0.05;
+
+    // Cascade animation - red wave effect
+    if (isCascading || isTrigger) {
+      const cascadeRadius = radius + 20 + Math.sin(pulsePhase * 3) * 15;
+      const cascadeGradient = ctx.createRadialGradient(x, y, radius, x, y, cascadeRadius);
+      cascadeGradient.addColorStop(0, isTrigger ? "rgba(255, 71, 87, 0.8)" : "rgba(255, 165, 2, 0.6)");
+      cascadeGradient.addColorStop(1, "transparent");
+      
+      ctx.fillStyle = cascadeGradient;
+      ctx.beginPath();
+      ctx.arc(x, y, cascadeRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Ripple effect
+      for (let i = 0; i < 3; i++) {
+        const ripplePhase = (pulsePhase * 2 + i * Math.PI / 3) % (Math.PI * 2);
+        const rippleRadius = radius + 10 + (ripplePhase / (Math.PI * 2)) * 40;
+        const rippleAlpha = 1 - (ripplePhase / (Math.PI * 2));
+        
+        ctx.strokeStyle = isTrigger ? `rgba(255, 71, 87, ${rippleAlpha * 0.6})` : `rgba(255, 165, 2, ${rippleAlpha * 0.4})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(x, y, rippleRadius, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
 
     // Special rendering for market nodes
     if (inst.type === 'market' || inst.isMarket) {
@@ -432,7 +509,7 @@ const NetworkCanvas = ({
         const returnText = `${priceReturn >= 0 ? '+' : ''}${(priceReturn * 100).toFixed(1)}%`;
         
         ctx.fillStyle = "#374151";
-        ctx.fillText(priceText, x, priceY);
+        ctx.fi(isCascading || isTrigger) ? "rgba(255, 71, 87, 0.6)" : llText(priceText, x, priceY);
         
         ctx.fillStyle = returnColor;
         ctx.font = "10px system-ui";
@@ -464,7 +541,9 @@ const NetworkCanvas = ({
       };
 
       gradient.addColorStop(
-        0,
+        0,(isCascading || isTrigger) 
+        ? (isTrigger ? ["#ff4757", "#c0392b"] : ["#ffa502", "#e67e22"]) 
+        : 
         typeColors[inst.type] || "rgba(107, 114, 128, 0.4)",
       );
       gradient.addColorStop(1, "transparent");
@@ -495,7 +574,16 @@ const NetworkCanvas = ({
       clearinghouse: ["#f59e0b", "#b45309"],
     };
 
-    const [color1, color2] = typeGradients[inst.type] || ["#6b7280", "#374151"];
+    let [color1, color2] = typeGradients[inst.type] || ["#6b7280", "#374151"];
+    
+    // Override with risk heatmap colors if enabled
+    if (showRiskHeatmap && inst.type === 'bank') {
+      const riskScore = calculateRiskScore(inst);
+      const riskColors = getRiskColor(riskScore);
+      color1 = riskColors.main;
+      color2 = riskColors.main; // Uniform color for risk display
+    }
+    
     const gradient = ctx.createRadialGradient(x, y - 15, 0, x, y, radius);
     gradient.addColorStop(0, color1);
     gradient.addColorStop(1, color2);
@@ -861,6 +949,14 @@ const NetworkCanvas = ({
       return;
     }
 
+    // Check for hovered institution (for risk tooltip)
+    const hovered = institutions.find((inst) => {
+      const dx = x - inst.position.x;
+      const dy = y - inst.position.y;
+      return Math.sqrt(dx * dx + dy * dy) < 45;
+    });
+    setHoveredInstitution(hovered);
+
     // Move node
     if (dragging && !isSimulating) {
       onUpdateInstitution(dragging, {
@@ -897,18 +993,82 @@ const NetworkCanvas = ({
   };
 
   return (
-    <canvas
-      ref={canvasRef}
-      className={`w-full h-full backdrop-blur-sm ${connectingFrom ? "cursor-crosshair" : "cursor-pointer"}`}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={() => {
-        setDragging(null);
-        setConnectingFrom(null);
-        setConnectionEnd(null);
-      }}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        className={`w-full h-full backdrop-blur-sm ${connectingFrom ? "cursor-crosshair" : "cursor-pointer"}`}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={() => {
+          setDragging(null);
+          setConnectingFrom(null);
+          setConnectionEnd(null);
+          setHoveredInstitution(null);
+        }}
+      />
+      
+      {/* Risk Tooltip */}
+      {showRiskHeatmap && hoveredInstitution && hoveredInstitution.type === 'bank' && (
+        <div 
+          className="absolute bg-gray-900/95 text-white px-4 py-3 rounded-lg shadow-2xl pointer-events-none z-50 border-2 border-gray-700"
+          style={{
+            left: `${hoveredInstitution.position.x + 60}px`,
+            top: `${hoveredInstitution.position.y - 40}px`,
+          }}
+        >
+          <div className="text-sm font-bold mb-2 flex items-center gap-2">
+            <span>🏦</span>
+            <span>{hoveredInstitution.name}</span>
+          </div>
+          <div className="space-y-1 text-xs">
+            <div className="flex justify-between gap-4">
+              <span className="text-gray-400">Risk Score:</span>
+              <span className="font-bold" style={{ 
+                color: getRiskColor(calculateRiskScore(hoveredInstitution)).main 
+              }}>
+                {(calculateRiskScore(hoveredInstitution) * 100).toFixed(1)}%
+              </span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-gray-400">Risk Level:</span>
+              <span className="font-bold" style={{ 
+                color: getRiskColor(calculateRiskScore(hoveredInstitution)).main 
+              }}>
+                {getRiskColor(calculateRiskScore(hoveredInstitution)).label}
+              </span>
+            </div>
+            <div className="h-px bg-gray-700 my-2"></div>
+            <div className="flex justify-between gap-4">
+              <span className="text-gray-400">Leverage:</span>
+              <span className={`font-semibold ${
+                (hoveredInstitution.leverage || 0) > 10 ? 'text-red-400' : 
+                (hoveredInstitution.leverage || 0) > 5 ? 'text-yellow-400' : 
+                'text-green-400'
+              }`}>
+                {(hoveredInstitution.leverage || 0).toFixed(2)}x
+              </span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-gray-400">Capital Ratio:</span>
+              <span className={`font-semibold ${
+                (hoveredInstitution.capital_ratio || 0.1) < 0.08 ? 'text-red-400' : 'text-green-400'
+              }`}>
+                {((hoveredInstitution.capital_ratio || 0.1) * 100).toFixed(2)}%
+              </span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-gray-400">Liquidity:</span>
+              <span className={`font-semibold ${
+                (hoveredInstitution.liquidity_ratio || 0.2) < 0.1 ? 'text-red-400' : 'text-green-400'
+              }`}>
+                {((hoveredInstitution.liquidity_ratio || 0.2) * 100).toFixed(1)}%
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 

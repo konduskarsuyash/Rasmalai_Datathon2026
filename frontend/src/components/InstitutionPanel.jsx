@@ -4,13 +4,19 @@ const InstitutionPanel = ({ institution, onUpdate, onRemove, connections }) => {
   const isMarket = institution.type === 'market' || institution.isMarket;
 
   if (isMarket) {
-    // Market node display (read-only)
+    // Market node display
     return (
       <div className="p-4">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
             Market Details
           </h3>
+          <button
+            onClick={() => onRemove(institution.id)}
+            className="px-3 py-1.5 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white rounded-lg text-sm font-medium transition-all duration-200 shadow-md"
+          >
+            Remove
+          </button>
         </div>
 
         <div className="space-y-4">
@@ -18,15 +24,21 @@ const InstitutionPanel = ({ institution, onUpdate, onRemove, connections }) => {
             <label className="block text-xs text-gray-600 font-medium mb-1">
               Market Name
             </label>
-            <div className="px-3 py-2 bg-purple-50 border-2 border-purple-300 text-purple-900 rounded-lg text-sm font-bold">
-              {institution.name}
-            </div>
+            <input
+              type="text"
+              value={institution.name}
+              onChange={(e) => onUpdate(institution.id, { name: e.target.value })}
+              className="w-full px-3 py-2 bg-white border-2 border-purple-300 text-purple-900 rounded-lg text-sm font-bold focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all"
+            />
           </div>
 
           <div className="p-4 bg-purple-50 border-2 border-purple-300 rounded-lg">
             <p className="text-sm text-purple-900 font-bold mb-2">📊 Market Node</p>
             <p className="text-xs text-purple-700">
               This is a market/investment destination. Banks can invest in or divest from this market during simulation.
+            </p>
+            <p className="text-xs text-purple-700 mt-2">
+              <span className="font-bold">ID:</span> {institution.id}
             </p>
           </div>
 

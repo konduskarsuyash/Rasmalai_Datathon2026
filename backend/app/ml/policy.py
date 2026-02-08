@@ -52,15 +52,12 @@ class MLPolicy:
     def select_action(self, observation: Dict, priority_value: Optional[str] = None, 
                      network_default_rate: float = 0.0) -> BankAction:
         """
-        Select action using either game theory (Nash equilibrium) or heuristics
+        Select action using either game theory (Nash equilibrium) or heuristics.
         
-        Args:
-            observation: Bank's state observation
-            priority_value: Strategic priority (PROFIT, LIQUIDITY, STABILITY)
-            network_default_rate: System-wide default rate for game theory
-            
-        Returns:
-            BankAction to execute
+        Economic logic:
+        - High risk_appetite banks: borrow → invest in markets (carry trade for higher returns)
+        - Low risk_appetite banks: lend to other banks (earn interest income safely)
+        - This creates a natural economic cycle where borrowing has PURPOSE
         """
         
         # === GAME THEORY MODE: Nash Equilibrium ===
@@ -73,62 +70,98 @@ class MLPolicy:
     def _select_action_game_theoretic(self, observation: Dict, priority_value: Optional[str],
                                      network_default_rate: float) -> BankAction:
         """
-        Game-theoretic decision using Nash equilibrium best response
+        Game-theoretic decision using Nash equilibrium best response.
+        Uses risk_appetite to balance between market investment and interbank lending.
         """
+        import random
+        
         cash = observation.get("cash", 100)
         equity = observation.get("equity", 50)
         market_exposure = observation.get("market_exposure", 0.0)
         liquidity_ratio = observation.get("liquidity_ratio", 0.5)
+        risk_appetite = observation.get("risk_appetite", 0.5)
+        has_markets = observation.get("has_markets", True)
+        local_stress = observation.get("local_stress", 0.0)
         
         # Get Nash equilibrium action (LEND or HOARD)
         gt_action, reasoning = get_nash_equilibrium_action(observation, network_default_rate)
         
         # Map game theory action to bank actions
         if gt_action.value == "LEND":
-            # Nash equilibrium says LEND
-            # Decide HOW to lend based on portfolio
-            if cash > 50 and liquidity_ratio > 0.3:
-                # Strong position - diversify
-                if market_exposure < 0.2:
-                    return BankAction.INVEST_MARKET  # Lend to market
+            # Nash equilibrium says LEND — deploy capital productively
+            
+            # Emergency: too little cash to do anything useful
+            if cash < 15 or liquidity_ratio < 0.1:
+                return BankAction.HOARD_CASH
+            
+            # Decide between INVEST_MARKET vs INCREASE_LENDING using risk_appetite
+            # High risk_appetite (>0.5) → prefer market investment (higher potential returns)
+            # Low risk_appetite (<0.5) → prefer interbank lending (stable interest income)
+            
+            if has_markets and cash > 20:
+                # Investment probability scales with risk_appetite
+                # risk_appetite=0.0 → 15% chance to invest (conservative banks still diversify a bit)
+                # risk_appetite=0.5 → 50% chance to invest
+                # risk_appetite=1.0 → 85% chance to invest (aggressive banks love markets)
+                invest_prob = 0.15 + (risk_appetite * 0.70)
+                
+                # Reduce invest probability if already heavily exposed to markets
+                # Allow up to 50% market exposure (was 20% before — way too restrictive)
+                if market_exposure > 0.5:
+                    invest_prob *= 0.2  # Heavily reduce but don't eliminate
+                elif market_exposure > 0.35:
+                    invest_prob *= 0.5  # Moderate reduction
+                
+                # Increase invest probability if cash is plentiful (put money to work)
+                if liquidity_ratio > 0.6:
+                    invest_prob = min(0.95, invest_prob * 1.3)
+                
+                # Under stress, reduce market appetite
+                if local_stress > 0.3:
+                    invest_prob *= 0.5
+                
+                if random.random() < invest_prob:
+                    return BankAction.INVEST_MARKET
                 else:
-                    return BankAction.INCREASE_LENDING  # Lend to banks
-            elif cash > 30:
-                # Moderate position - prefer interbank lending
+                    if cash > 20:
+                        return BankAction.INCREASE_LENDING
+                    return BankAction.HOARD_CASH
+            
+            elif cash > 20:
+                # No markets available — lend to other banks
                 return BankAction.INCREASE_LENDING
             else:
-                # Weak position - just maintain current
                 return BankAction.HOARD_CASH
         
         else:  # gt_action == HOARD
-            # Nash equilibrium says HOARD
-            # Liquidate positions and preserve cash
-            if market_exposure > 0.05:
+            # Nash equilibrium says HOARD — preserve capital
+            # Liquidate positions and pull back
+            if market_exposure > 0.1 and random.random() < 0.6:
                 return BankAction.DIVEST_MARKET  # Exit market positions
             elif liquidity_ratio < 0.25:
-                return BankAction.DECREASE_LENDING  # Reduce lending
+                return BankAction.DECREASE_LENDING  # Recall loans
             else:
-                return BankAction.HOARD_CASH  # Pure hoarding
+                return BankAction.HOARD_CASH
     
     def _select_action_heuristic(self, observation: Dict, priority_value: Optional[str]) -> BankAction:
         """
-        Original heuristic-based decision making
+        Heuristic-based decision making with risk_appetite-driven market investment.
         """
+        import random
+        
         bank_id = observation.get("bank_id", 0)
         cash = observation.get("cash", 100)
         equity = observation.get("equity", 50)
         leverage = observation.get("leverage", 1.0)
         liquidity_ratio = observation.get("liquidity_ratio", 0.5)
         market_exposure = observation.get("market_exposure", 0.0)
-        leverage_gap = observation.get("leverage_gap", 0.0)
-        liquidity_gap = observation.get("liquidity_gap", 0.0)
-        exposure_gap = observation.get("exposure_gap", 0.0)
+        risk_appetite = observation.get("risk_appetite", 0.5)
+        has_markets = observation.get("has_markets", True)
         local_stress = observation.get("local_stress", 0.0)
 
-        # Priority-based strategies
+        # Priority-based strategies (override normal logic)
         if priority_value == "LIQUIDITY":
             if cash < 30 or liquidity_ratio < 0.2:
-                # Divest aggressively if low on cash
                 if market_exposure > 0.05:
                     return BankAction.DIVEST_MARKET
                 return BankAction.DECREASE_LENDING
@@ -137,31 +170,48 @@ class MLPolicy:
         if priority_value == "STABILITY":
             if leverage > 2.5:
                 return BankAction.DECREASE_LENDING
-            if market_exposure > 0.15:
+            if market_exposure > 0.3:
                 return BankAction.DIVEST_MARKET
             return BankAction.HOARD_CASH
 
-        # Emergency liquidity management
-        if cash < 20 or liquidity_ratio < 0.15:
-            # Critical liquidity situation - divest immediately
+        # === Emergency liquidation ===
+        if cash < 15 or liquidity_ratio < 0.12:
             if market_exposure > 0.03:
                 return BankAction.DIVEST_MARKET
             return BankAction.DECREASE_LENDING
         
-        # Stressed environment response
-        if local_stress > 0.3:
-            if liquidity_ratio < 0.25:
+        # === Stress response ===
+        if local_stress > 0.4:
+            if market_exposure > 0.1:
                 return BankAction.DIVEST_MARKET
-            return BankAction.DECREASE_LENDING
+            if liquidity_ratio < 0.25:
+                return BankAction.DECREASE_LENDING
+            return BankAction.HOARD_CASH
             
-        if equity < 30:
+        if equity < 20:
             return BankAction.HOARD_CASH
         
-        # Default opportunistic behavior
-        if cash > 80 and liquidity_ratio > 0.4:
+        # === Productive capital deployment ===
+        # Banks with cash should PUT IT TO WORK — either invest or lend
+        # The split is driven by risk_appetite:
+        #   high risk → markets (higher returns, higher risk)
+        #   low risk → interbank lending (stable interest income)
+        
+        if cash > 25:
+            if has_markets and market_exposure < 0.5:
+                # Probability of investing vs lending based on risk appetite
+                invest_prob = 0.2 + (risk_appetite * 0.6)
+                
+                # Banks with lots of idle cash should be more aggressive
+                if cash > 60:
+                    invest_prob = min(0.9, invest_prob + 0.15)
+                
+                if random.random() < invest_prob:
+                    return BankAction.INVEST_MARKET
+            
+            # Fall through to lending
             return BankAction.INCREASE_LENDING
-        if cash > 60:
-            return BankAction.INVEST_MARKET
+        
         return BankAction.HOARD_CASH
     
     def get_action_reason(self, observation: Dict, action: BankAction,

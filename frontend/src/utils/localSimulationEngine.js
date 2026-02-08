@@ -23,13 +23,11 @@ export class LocalSimulationEngine {
     // State
     this.banks = this.initializeBanks(initialBanks);
     this.loans = this.initializeLoans(initialConnections);
-    this.markets = {
-      BANK_INDEX: { price: 100, totalInvested: 0, history: [100] },
-      FIN_SERVICES: { price: 100, totalInvested: 0, history: [100] }
-    };
+    this.markets = this.initializeMarkets(initialBanks);
     
     console.log('✅ Initialized banks:', this.banks);
     console.log('✅ Initialized loans:', this.loans);
+    console.log('✅ Initialized markets:', this.markets);
     
     // Simulation state
     this.currentStep = 0;
@@ -61,6 +59,16 @@ export class LocalSimulationEngine {
         isDefaulted: false,
         history: []
       }));
+  }
+
+  initializeMarkets(initialInstitutions) {
+    const marketNodes = initialInstitutions.filter(b => b.type === 'market' || b.isMarket);
+    const markets = {};
+    for (const m of marketNodes) {
+      markets[m.id] = { price: 100, totalInvested: 0, history: [100] };
+    }
+    console.log(`📊 Initialized ${Object.keys(markets).length} markets from institutions`);
+    return markets;
   }
   
   initializeLoans(connections) {
@@ -250,12 +258,15 @@ export class LocalSimulationEngine {
     const totalAssets = bank.cash + Object.values(bank.investments).reduce((a,b) => a+b, 0);
     const leverage = bank.capital > 0 ? totalAssets / bank.capital : 0;
     const cashRatio = bank.capital > 0 ? bank.cash / bank.capital : 0;
+    const marketIds = Object.keys(this.markets);
+    const hasMarkets = marketIds.length > 0;
     
     console.log(`Bank ${bank.id} deciding:`, { 
       capital: bank.capital.toFixed(1), 
       cash: bank.cash.toFixed(1), 
       cashRatio: cashRatio.toFixed(2),
-      riskFactor: bank.riskFactor 
+      riskFactor: bank.riskFactor,
+      marketsAvailable: marketIds.length
     });
     
     // Ensure bank has minimum cash to act
@@ -264,9 +275,9 @@ export class LocalSimulationEngine {
       return { type: 'HOLD' };
     }
     
-    // High risk banks (>0.5) invest aggressively
-    if (bank.riskFactor > 0.5 && bank.cash > 10) {
-      const market = Math.random() > 0.5 ? 'BANK_INDEX' : 'FIN_SERVICES';
+    // High risk banks (>0.5) invest aggressively (only if markets exist)
+    if (hasMarkets && bank.riskFactor > 0.5 && bank.cash > 10) {
+      const market = marketIds[Math.floor(Math.random() * marketIds.length)];
       const amount = Math.min(bank.cash * 0.3, bank.cash - 5); // Keep $5 reserve
       console.log(`Bank ${bank.id} investing $${amount.toFixed(1)}M in ${market}`);
       return {
@@ -290,6 +301,20 @@ export class LocalSimulationEngine {
       }
     }
     
+    // High risk banks with no markets available — lend instead
+    if (!hasMarkets && bank.riskFactor > 0.5 && bank.cash > 10) {
+      const target = this.findLoanTarget(bank);
+      if (target !== null) {
+        const amount = Math.min(bank.cash * 0.3, bank.cash - 5);
+        console.log(`Bank ${bank.id} (high risk, no markets) lending $${amount.toFixed(1)}M to Bank ${target}`);
+        return {
+          type: 'LEND',
+          target: target,
+          amount: amount
+        };
+      }
+    }
+    
     // Low risk banks (<0.2) are conservative but still lend small amounts
     if (bank.riskFactor < 0.2 && bank.cash > 20) {
       const target = this.findLoanTarget(bank);
@@ -304,9 +329,9 @@ export class LocalSimulationEngine {
       }
     }
     
-    // If cash is very high (>50% of capital), invest some
-    if (cashRatio > 0.5 && bank.cash > 20) {
-      const market = Math.random() > 0.5 ? 'BANK_INDEX' : 'FIN_SERVICES';
+    // If cash is very high (>50% of capital) and markets exist, invest some
+    if (hasMarkets && cashRatio > 0.5 && bank.cash > 20) {
+      const market = marketIds[Math.floor(Math.random() * marketIds.length)];
       const amount = Math.min(bank.cash * 0.15, bank.cash - 15);
       console.log(`Bank ${bank.id} has excess cash, investing $${amount.toFixed(1)}M in ${market}`);
       return {

@@ -27,12 +27,14 @@ const RealTimeSimulationPanel = ({ onResult, lastResult, institutions, onTransac
       // Build node parameters from playground institutions if enabled
       let nodeParameters = null;
       if (usePlaygroundNodes && institutions && institutions.length > 0) {
-        nodeParameters = institutions.map((inst) => ({
-          node_id: inst.id,
-          initial_capital: inst.capital || 100.0,
-          target_leverage: inst.target || 3.0,
-          risk_factor: inst.risk || 0.2,
-        }));
+        nodeParameters = institutions
+          .filter(inst => inst.type === 'bank' && !inst.isMarket)
+          .map((inst) => ({
+            node_id: inst.id,
+            initial_capital: inst.capital || 100.0,
+            target_leverage: inst.target || 3.0,
+            risk_factor: inst.risk || 0.2,
+          }));
       }
 
       const body = {
