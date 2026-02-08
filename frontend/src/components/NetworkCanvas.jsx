@@ -7,6 +7,7 @@ const NetworkCanvas = ({
   onSelectInstitution,
   onSelectConnection,
   onUpdateInstitution,
+  onUpdateConnection,
   onAddConnection,
   selectedInstitution,
   selectedConnection,
@@ -264,17 +265,18 @@ const NetworkCanvas = ({
   };
 
   const drawAnimatedConnection = (ctx, source, target, conn, isSelected) => {
-    // Enhanced colors with neon effect
+    // Enhanced colors with stronger differentiation for connection types
     const colors = {
-      credit: { main: "#3b82f6", glow: "#60a5fa", accent: "#93c5fd" },
-      settlement: { main: "#10b981", glow: "#34d399", accent: "#6ee7b7" },
-      margin: { main: "#f59e0b", glow: "#fbbf24", accent: "#fcd34d" },
+      credit: { main: "#3b82f6", glow: "#60a5fa", accent: "#93c5fd", name: "Credit Line" },
+      settlement: { main: "#10b981", glow: "#34d399", accent: "#6ee7b7", name: "Settlement" },
+      margin: { main: "#ef4444", glow: "#f87171", accent: "#fca5a5", name: "Margin/Collateral" },
     };
 
     const colorScheme = colors[conn.type] || {
       main: "#6b7280",
       glow: "#9ca3af",
       accent: "#d1d5db",
+      name: "Default",
     };
 
     const angle = Math.atan2(
@@ -397,8 +399,19 @@ const NetworkCanvas = ({
 
   const drawModernInstitution = (ctx, inst, isSelected, isCascading = false, isTrigger = false) => {
     const { x, y } = inst.position;
-    const radius = 45;
-    const pulseScale = 1 + Math.sin(pulsePhase) * 0.05;
+    
+    // Dynamic radius based on systemic importance
+    // Larger nodes = more systemically important
+    const baseRadius = 45;
+    const capitalFactor = inst.capital ? Math.min(inst.capital / 500, 1.5) : 1;
+    const centralityFactor = inst.networkCentrality ? 1 + (inst.networkCentrality * 0.3) : 1;
+    const radius = baseRadius * Math.max(0.8, Math.min(capitalFactor * centralityFactor, 1.4));
+    
+    // Enhanced pulse based on risk level - high risk = more pulse
+    const riskFactor = inst.risk || 0;
+    const basePulse = Math.sin(pulsePhase) * 0.05;
+    const riskPulse = Math.sin(pulsePhase * 2) * 0.1 * riskFactor;
+    const pulseScale = 1 + basePulse + riskPulse;
 
     // Cascade animation - red wave effect
     if (isCascading || isTrigger) {
@@ -474,10 +487,26 @@ const NetworkCanvas = ({
       ctx.fillRect(x + 5, y - 8, 6, 18);
       ctx.fillRect(x + 15, y - 15, 6, 25);
 
-      // Name label
-      ctx.font = "bold 12px system-ui";
-      const textWidth = ctx.measureText(inst.name).width;
-      const labelY = y + radius + 12;
+      // Name label with text truncation
+      ctx.font = "bold 11px system-ui";
+      
+      // Truncate long names to prevent overflow
+      let displayName = inst.name;
+      let textWidth = ctx.measureText(displayName).width;
+      const maxWidth = 80; // Maximum label width
+      
+      if (textWidth > maxWidth) {
+        // Truncate and add ellipsis
+        while (textWidth > maxWidth - 10 && displayName.length > 0) {
+          displayName = displayName.slice(0, -1);
+          textWidth = ctx.measureText(displayName + '...').width;
+        }
+        displayName = displayName + '...';
+        textWidth = ctx.measureText(displayName).width;
+      }
+      
+      // Match bank/exchange behaviour: label sits just under node
+      const labelY = y + radius + 14;
 
       ctx.shadowBlur = 12;
       ctx.shadowColor = "#a855f7";
@@ -486,7 +515,8 @@ const NetworkCanvas = ({
       ctx.strokeStyle = "#a855f7";
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.roundRect(x - textWidth / 2 - 10, labelY - 10, textWidth + 20, 20, 8);
+      // Extra horizontal padding to keep text away from edges
+      ctx.roundRect(x - textWidth / 2 - 14, labelY - 10, textWidth + 28, 20, 8);
       ctx.fill();
       ctx.stroke();
 
@@ -494,7 +524,7 @@ const NetworkCanvas = ({
       ctx.fillStyle = "#7c3aed";
       ctx.textBaseline = "middle";
       ctx.textAlign = "center";
-      ctx.fillText(inst.name, x, labelY);
+      ctx.fillText(displayName, x, labelY);
 
       // Display market price and investment info if available
       if (inst.price !== undefined && inst.total_invested !== undefined) {
@@ -566,6 +596,20 @@ const NetworkCanvas = ({
     ctx.arc(x, y, riskRadius, 0, Math.PI * 2 * inst.risk);
     ctx.stroke();
     ctx.shadowBlur = 0;
+    
+    // Critical risk warning for high-risk nodes (risk > 0.7)
+    if (inst.risk > 0.7) {
+      const warningScale = 1 + Math.sin(pulsePhase * 3) * 0.15;
+      ctx.save();
+      ctx.strokeStyle = "rgba(239, 68, 68, 0.8)";
+      ctx.lineWidth = 3;
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = "#ef4444";
+      ctx.beginPath();
+      ctx.arc(x, y, (riskRadius + 5) * warningScale, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // Main institution circle with modern gradient
     const typeGradients = {
@@ -684,15 +728,26 @@ const NetworkCanvas = ({
       ctx.stroke();
     }
 
-    // Capital value inside node
-    ctx.font = "bold 11px system-ui";
-    ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-    ctx.fillText(`$${Math.round(inst.capital)}M`, x, y + 20);
-
     // Name label with enhanced styling - fixed position below node
-    ctx.font = "bold 12px system-ui";
-    const textWidth = ctx.measureText(inst.name).width;
-    const labelY = y + radius + 12;
+    ctx.font = "bold 11px system-ui";
+    
+    // Truncate long names to prevent overflow
+    let displayName = inst.name;
+    let textWidth = ctx.measureText(displayName).width;
+    const maxWidth = 80; // Maximum label width
+    
+    if (textWidth > maxWidth) {
+      // Truncate and add ellipsis
+      while (textWidth > maxWidth - 10 && displayName.length > 0) {
+        displayName = displayName.slice(0, -1);
+        textWidth = ctx.measureText(displayName + '...').width;
+      }
+      displayName = displayName + '...';
+      textWidth = ctx.measureText(displayName).width;
+    }
+    
+    // Position label just below the node, relative to its radius
+    const labelY = y + radius + 14;
 
     // Subtle glow for name background
     ctx.shadowBlur = 12;
@@ -702,14 +757,16 @@ const NetworkCanvas = ({
     ctx.strokeStyle = color1;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.roundRect(x - textWidth / 2 - 10, labelY - 10, textWidth + 20, 20, 8);
+    // Extra horizontal padding so text never touches the border
+    ctx.roundRect(x - textWidth / 2 - 14, labelY - 10, textWidth + 28, 20, 8);
     ctx.fill();
     ctx.stroke();
 
     ctx.shadowBlur = 0;
     ctx.fillStyle = color2;
     ctx.textBaseline = "middle";
-    ctx.fillText(inst.name, x, labelY);
+    ctx.textAlign = "center";
+    ctx.fillText(displayName, x, labelY);
 
     // Status indicator dot
     const statusColor =
@@ -912,6 +969,27 @@ const NetworkCanvas = ({
     const rect = canvasRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+
+    // Check if clicking on a connection label (to select connection for editing)
+    const clickedConnection = connections.find((conn) => {
+      const source = institutions.find(i => i.id === conn.source);
+      const target = institutions.find(i => i.id === conn.target);
+      if (!source || !target) return false;
+      
+      const midX = (source.position.x + target.position.x) / 2;
+      const midY = (source.position.y + target.position.y) / 2;
+      
+      // Check if click is within connection label box (64x24 centered on midpoint)
+      return x >= midX - 32 && x <= midX + 32 && y >= midY - 12 && y <= midY + 12;
+    });
+    
+    if (clickedConnection && !isSimulating) {
+      // Select the connection so it can be edited via the side panel input
+      if (onSelectConnection) {
+        onSelectConnection(clickedConnection);
+      }
+      return;
+    }
 
     // Check if clicking on an institution
     const clicked = institutions.find((inst) => {
