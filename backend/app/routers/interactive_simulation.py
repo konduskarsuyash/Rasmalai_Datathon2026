@@ -57,15 +57,19 @@ async def interactive_simulation_generator(config: SimulationConfig, control_que
     state = SimulationState()
     state.banks = create_banks(config.num_banks, bank_configs=config.bank_configs)
     
-    # Use market configs from UI if provided, otherwise use defaults
+    # Use market configs from UI if provided, otherwise create defaults
     if config.market_configs and len(config.market_configs) > 0:
         state.markets = create_markets_from_config(config.market_configs)
         print(f"[INTERACTIVE SIM] Using {len(config.market_configs)} user-defined markets")
     else:
-        # No markets — create empty market system
-        from app.core.market import MarketSystem
-        state.markets = MarketSystem()
-        print(f"[INTERACTIVE SIM] No markets defined by user")
+        # No markets from UI — create default markets so banks can invest
+        # Banks NEED markets to invest in; without them the economy stagnates
+        default_market_configs = [
+            {"market_id": "BANK_INDEX", "name": "Bank Index Fund", "initial_price": 100.0},
+            {"market_id": "FIN_SERVICES", "name": "Financial Services", "initial_price": 100.0},
+        ]
+        state.markets = create_markets_from_config(default_market_configs)
+        print(f"[INTERACTIVE SIM] No markets from UI — created {len(default_market_configs)} default markets")
     
     _create_interbank_network(state.banks, connection_density=config.connection_density)
     
@@ -176,17 +180,57 @@ async def interactive_simulation_generator(config: SimulationConfig, control_que
             # Inject market availability so the ML policy knows whether markets exist
             observation["has_markets"] = has_markets
             
+            # Add balance sheet details for Featherless AI prompt
+            observation["investments"] = bank.balance_sheet.investments
+            observation["loans_given"] = bank.balance_sheet.loans_given
+            observation["borrowed"] = bank.balance_sheet.borrowed
+            
+            # Add market return info so policy can make profit-taking decisions
+            best_market_return = 0.0
+            best_market_id = None
+            best_market_position = 0.0
+            for mid, pos in bank.balance_sheet.investment_positions.items():
+                if pos > 0 and mid in state.markets.markets:
+                    mkt_return = state.markets.markets[mid].get_return()
+                    if mkt_return > best_market_return:
+                        best_market_return = mkt_return
+                        best_market_id = mid
+                        best_market_position = pos
+            observation["best_market_return"] = best_market_return
+            observation["best_market_position"] = best_market_position
+            observation["total_invested"] = bank.balance_sheet.investments
+            
+            # Featherless AI is MANDATORY for every bank at every timestep
             priority = None
-            if config.use_featherless and featherless_fn:
+            if featherless_fn:
                 try:
                     priority = featherless_fn(observation)
                     bank.last_priority = priority
-                except Exception:
+                except Exception as e:
+                    print(f"[FEATHERLESS] Error for bank {bank.bank_id}: {e}")
                     priority = None
+            
+            # If no Featherless client, use rule-based fallback directly
+            if priority is None:
+                from app.featherless.decision_engine import _rule_based_fallback, StrategicPriority as SP
+                priority = _rule_based_fallback(observation)
+                bank.last_priority = priority
             ml_action, reason = select_action(observation, priority)
             action = BankAction[ml_action.value]
             counterparty_id = _select_counterparty(bank, state.banks, action)
-            market_id = random.choice(market_ids) if has_markets else None
+            
+            # For DIVEST_MARKET: pick the market where bank has the most invested
+            if action == BankAction.DIVEST_MARKET and has_markets:
+                # Find the market with highest position for this bank
+                best_divest_market = None
+                best_divest_amount = 0.0
+                for mid, pos in bank.balance_sheet.investment_positions.items():
+                    if pos > best_divest_amount:
+                        best_divest_amount = pos
+                        best_divest_market = mid
+                market_id = best_divest_market if best_divest_market else random.choice(market_ids)
+            else:
+                market_id = random.choice(market_ids) if has_markets else None
             
             # Fix: If lending action but no valid counterparty (e.g., only 1 bank), switch to market action
             if action in [BankAction.INCREASE_LENDING, BankAction.DECREASE_LENDING] and counterparty_id is None:
@@ -350,7 +394,86 @@ async def interactive_simulation_generator(config: SimulationConfig, control_que
         
         print(f"[INTERACTIVE SIM] Processed {len([b for b in state.banks if not b.is_defaulted])} banks at step {t}")
         
-        # Book profits from investments (every 5 steps)
+        # === AUTOMATIC PROFIT-TAKING PASS ===
+        # After all bank actions, banks with highly profitable positions
+        # automatically sell a portion to lock in gains (like a trailing stop)
+        for bank in state.banks:
+            if bank.is_defaulted or bank.balance_sheet.investments < 5:
+                continue
+            
+            for mid, position in list(bank.balance_sheet.investment_positions.items()):
+                if position < 2 or mid not in state.markets.markets:
+                    continue
+                
+                market = state.markets.markets[mid]
+                mkt_return = market.get_return()
+                
+                # Auto-take profits when return exceeds thresholds
+                # > 10% return: sell 30-50% of position
+                # > 20% return: sell 40-60% of position
+                # > 30% return: sell 50-70% of position
+                sell_fraction = 0.0
+                if mkt_return > 0.30:
+                    sell_fraction = random.uniform(0.50, 0.70)
+                elif mkt_return > 0.20:
+                    sell_fraction = random.uniform(0.40, 0.60)
+                elif mkt_return > 0.10:
+                    sell_fraction = random.uniform(0.30, 0.50)
+                elif mkt_return > 0.05 and bank.risk_appetite < 0.4:
+                    # Conservative banks take profits earlier
+                    sell_fraction = random.uniform(0.15, 0.30)
+                
+                # Also sell if market is crashing (stop-loss at -10%)
+                if mkt_return < -0.10 and position > 5:
+                    sell_fraction = max(sell_fraction, random.uniform(0.40, 0.70))
+                
+                if sell_fraction > 0:
+                    sell_amount = position * sell_fraction
+                    sell_amount = max(2.0, min(sell_amount, position))
+                    
+                    # Execute the divestment
+                    realized_gain = sell_amount * mkt_return
+                    bank.balance_sheet.cash += sell_amount + realized_gain
+                    bank.balance_sheet.investments -= sell_amount
+                    bank.balance_sheet.investment_positions[mid] -= sell_amount
+                    
+                    # Track market flow
+                    step_market_flows[mid] = step_market_flows.get(mid, 0.0) - sell_amount
+                    
+                    # Emit profit-taking event
+                    profit_take_event = {
+                        "type": "transaction",
+                        "step": t,
+                        "from_bank": bank.bank_id,
+                        "to_bank": None,
+                        "market_id": mid,
+                        "action": "DIVEST_MARKET",
+                        "amount": round(sell_amount, 2),
+                        "reason": f"Profit-taking: {mkt_return*100:.1f}% return, sold {sell_fraction*100:.0f}%",
+                        "cash_before": round(bank.balance_sheet.cash - sell_amount - realized_gain, 2),
+                        "cash_after": round(bank.balance_sheet.cash, 2),
+                        "cash_change": round(sell_amount + realized_gain, 2),
+                    }
+                    yield f"data: {json.dumps(profit_take_event)}\n\n"
+                    
+                    if abs(realized_gain) > 0.5:
+                        gain_event = {
+                            "type": "market_gain",
+                            "step": t,
+                            "bank_id": bank.bank_id,
+                            "market_id": mid,
+                            "divested_amount": round(sell_amount, 2),
+                            "market_return": round(mkt_return * 100, 2),
+                            "realized_gain": round(realized_gain, 2),
+                            "new_cash": round(bank.balance_sheet.cash, 2),
+                        }
+                        yield f"data: {json.dumps(gain_event)}\n\n"
+                    
+                    if t < 5:
+                        print(f"[PROFIT-TAKE] Step {t} Bank {bank.bank_id}: Sold ${sell_amount:.1f}M from {mid} "
+                              f"(return: {mkt_return*100:.1f}%, gain: ${realized_gain:.1f}M)")
+        
+        # Book profits from investments (every 5 steps) — mark-to-market accounting
         if t % 5 == 0:
             for bank in state.banks:
                 if not bank.is_defaulted:
@@ -439,6 +562,30 @@ async def interactive_simulation_generator(config: SimulationConfig, control_que
                 }
                 yield f"data: {json.dumps(cascade_event)}\n\n"
         
+        # === DYNAMIC RISK UPDATE ===
+        # Risk factor (risk_appetite) updates each step based on financial health
+        # This represents evolving default risk: bad decisions → higher risk → fewer counterparties
+        for bank in state.banks:
+            if bank.is_defaulted:
+                continue
+            ratios = bank.balance_sheet.compute_ratios()
+            
+            # Compute a "health score" from 0 (terrible) to 1 (excellent)
+            leverage_score = max(0, 1.0 - (ratios["leverage"] / 8.0))  # 8x leverage = 0
+            liquidity_score = min(1.0, ratios["liquidity_ratio"] / 0.5)  # 50% liquid = 1.0
+            equity_score = min(1.0, bank.balance_sheet.equity / 100.0)  # $100M equity = 1.0
+            stress_penalty = bank.observe_local_state(
+                _count_neighbor_defaults(bank, state.banks)
+            ).get("local_stress", 0.0)
+            
+            health = (leverage_score * 0.3 + liquidity_score * 0.3 + equity_score * 0.3) * (1.0 - stress_penalty * 0.5)
+            health = max(0.05, min(0.95, health))
+            
+            # Blend current risk_appetite toward health score (gradual update, 20% per step)
+            old_risk = bank.risk_appetite
+            bank.risk_appetite = old_risk * 0.8 + health * 0.2
+            bank.risk_appetite = max(0.05, min(0.95, bank.risk_appetite))
+        
         # Apply market flows: aggregate all investment/divestment activity and update prices
         # Use the tracked flows from this step
         for market_id, market in state.markets.markets.items():
@@ -478,7 +625,11 @@ async def interactive_simulation_generator(config: SimulationConfig, control_que
                 "investments": bank.balance_sheet.investments,
                 "loans_given": bank.balance_sheet.loans_given,
                 "borrowed": bank.balance_sheet.borrowed,
+                "equity": bank.balance_sheet.equity,
                 "leverage": ratios.get("leverage", 0),
+                "capital_ratio": ratios.get("capital_ratio", 0),
+                "liquidity_ratio": ratios.get("liquidity_ratio", 0),
+                "risk_appetite": round(bank.risk_appetite, 3),
                 "is_defaulted": bank.is_defaulted,
             })
         
@@ -527,6 +678,11 @@ async def start_interactive_simulation(
     current_user: Optional[dict] = Depends(get_optional_user),
 ):
     """Start an interactive simulation with pause/resume/modify capabilities."""
+    # Log the received request for debugging
+    print(f"[INTERACTIVE SIM] Request: num_banks={body.num_banks}, market_nodes={body.market_nodes}, "
+          f"node_params={len(body.node_parameters) if body.node_parameters else 0}, "
+          f"featherless={body.use_featherless}, game_theory={body.use_game_theory}")
+    
     if ACTIVE_SIMULATION["is_running"]:
         # Force cleanup if stuck
         print("[INTERACTIVE SIM] Force stopping stuck simulation")
@@ -578,10 +734,13 @@ async def start_interactive_simulation(
     # Create new control queue
     ACTIVE_SIMULATION["control_queue"] = asyncio.Queue()
     
-    featherless_fn = None
-    if body.use_featherless:
-        from app.routers.simulation import _get_featherless_fn
-        featherless_fn = _get_featherless_fn()
+    # Featherless AI is MANDATORY — always create the client
+    from app.routers.simulation import _get_featherless_fn
+    featherless_fn = _get_featherless_fn()
+    if featherless_fn is None:
+        print("[INTERACTIVE SIM] WARNING: Featherless client unavailable, using rule-based fallback")
+    else:
+        print("[INTERACTIVE SIM] Featherless AI client ready — mandatory for all banks")
     
     return StreamingResponse(
         interactive_simulation_generator(config, ACTIVE_SIMULATION["control_queue"], featherless_fn),

@@ -4,6 +4,12 @@ import { useEffect, useRef } from 'react';
 const MarketDashboard = ({ market, historicalData, transactions, onClose }) => {
   const canvasRef = useRef(null);
   
+  // Safety guard
+  if (!market || !market.name) {
+    console.warn('[MarketDashboard] Invalid market prop:', market);
+    return null;
+  }
+  
   // Debug logging
   console.log('MarketDashboard opened for:', market.name, 'ID:', market.id);
   console.log('Historical data points:', historicalData.length);

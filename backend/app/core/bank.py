@@ -237,10 +237,11 @@ def create_banks(num_banks: int, randomize: bool = True, bank_configs: Optional[
             target_leverage = max(1.0, config.target_leverage)  # At least 1x
             total_assets = equity * target_leverage
             
-            # Distribute assets
-            cash = total_assets * 0.5  # 50% cash
-            investments = total_assets * 0.3  # 30% investments
-            loans_given = total_assets * 0.2  # 20% loans
+            # Distribute assets — start with NO market investments
+            # Banks should CHOOSE to invest via the ML policy, not start pre-invested
+            cash = total_assets * 0.7  # 70% cash (ready to deploy)
+            investments = 0.0  # Start with zero — policy will decide to invest
+            loans_given = total_assets * 0.3  # 30% loans
             
             # Calculate borrowed to maintain equity
             # equity = total_assets - borrowed
@@ -272,6 +273,8 @@ def create_banks(num_banks: int, randomize: bool = True, bank_configs: Optional[
                 
             bs = BalanceSheet(cash=cash, investments=investments, loans_given=loans_given, borrowed=borrowed)
             bank = Bank(bank_id=i, balance_sheet=bs, targets=targets)
+            # Set risk_appetite from the UI's risk_factor so the policy uses it
+            bank.risk_appetite = config.risk_factor
             banks.append(bank)
         else:
             # Use default randomized approach
@@ -287,11 +290,17 @@ def create_banks(num_banks: int, randomize: bool = True, bank_configs: Optional[
             bs = BalanceSheet(cash=cash, investments=investments, loans_given=0.0, borrowed=borrowed)
             if bank_type == 0:
                 targets = BankTargets(2.0, 0.4, 0.1)
+                ra = 0.3  # Conservative
             elif bank_type == 1:
                 targets = BankTargets(3.0, 0.3, 0.2)
+                ra = 0.5  # Balanced
             elif bank_type == 2:
                 targets = BankTargets(2.5, 0.5, 0.1)
+                ra = 0.2  # Very conservative
             else:
                 targets = BankTargets(4.5, 0.15, 0.35)
-            banks.append(Bank(bank_id=i, balance_sheet=bs, targets=targets))
+                ra = 0.8  # Aggressive
+            bank = Bank(bank_id=i, balance_sheet=bs, targets=targets)
+            bank.risk_appetite = ra
+            banks.append(bank)
     return banks

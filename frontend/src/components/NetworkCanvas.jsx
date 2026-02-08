@@ -18,7 +18,6 @@ const NetworkCanvas = ({
   realtimeConnections = [],
   cascadingBanks = [], // Array of bank IDs currently in cascade
   cascadeTrigger = null, // ID of bank that triggered cascade
-  showRiskHeatmap = false, // Show risk-based color overlay
 }) => {
   const canvasRef = useRef(null);
   const [dragging, setDragging] = useState(null);
@@ -538,8 +537,8 @@ const NetworkCanvas = ({
         const returnColor = priceReturn >= 0 ? "#10b981" : "#ef4444";
         const returnText = `${priceReturn >= 0 ? '+' : ''}${(priceReturn * 100).toFixed(1)}%`;
         
-        ctx.fillStyle = "#374151";
-        ctx.fi(isCascading || isTrigger) ? "rgba(255, 71, 87, 0.6)" : llText(priceText, x, priceY);
+        ctx.fillStyle = (isCascading || isTrigger) ? "rgba(255, 71, 87, 0.6)" : "#374151";
+        ctx.fillText(priceText, x, priceY);
         
         ctx.fillStyle = returnColor;
         ctx.font = "10px system-ui";
@@ -619,14 +618,6 @@ const NetworkCanvas = ({
     };
 
     let [color1, color2] = typeGradients[inst.type] || ["#6b7280", "#374151"];
-    
-    // Override with risk heatmap colors if enabled
-    if (showRiskHeatmap && inst.type === 'bank') {
-      const riskScore = calculateRiskScore(inst);
-      const riskColors = getRiskColor(riskScore);
-      color1 = riskColors.main;
-      color2 = riskColors.main; // Uniform color for risk display
-    }
     
     const gradient = ctx.createRadialGradient(x, y - 15, 0, x, y, radius);
     gradient.addColorStop(0, color1);
@@ -872,6 +863,7 @@ const NetworkCanvas = ({
       INCREASE_LENDING: { color: "#10b981", label: "LEND", glow: "#059669" },
       DECREASE_LENDING: { color: "#f59e0b", label: "REPAY", glow: "#d97706" },
       HOARD_CASH: { color: "#6366f1", label: "HOLD", glow: "#4f46e5" },
+      BOOK_PROFIT: { color: "#14b8a6", label: "PROFIT", glow: "#0d9488" },
     };
     
     const style = actionStyles[tx.action] || { color: "#6b7280", label: tx.action, glow: "#4b5563" };
@@ -948,7 +940,7 @@ const NetworkCanvas = ({
     ctx.fillText(style.label, txX, txY - 5);
     
     ctx.font = "bold 11px system-ui";
-    ctx.fillText(`$${tx.amount.toFixed(0)}`, txX, txY + 6);
+    ctx.fillText(`$${(tx.amount ?? 0).toFixed(0)}`, txX, txY + 6);
 
     // Trail effect
     ctx.shadowBlur = 15;
@@ -1086,66 +1078,7 @@ const NetworkCanvas = ({
         }}
       />
       
-      {/* Risk Tooltip */}
-      {showRiskHeatmap && hoveredInstitution && hoveredInstitution.type === 'bank' && (
-        <div 
-          className="absolute bg-gray-900/95 text-white px-4 py-3 rounded-lg shadow-2xl pointer-events-none z-50 border-2 border-gray-700"
-          style={{
-            left: `${hoveredInstitution.position.x + 60}px`,
-            top: `${hoveredInstitution.position.y - 40}px`,
-          }}
-        >
-          <div className="text-sm font-bold mb-2 flex items-center gap-2">
-            <span>🏦</span>
-            <span>{hoveredInstitution.name}</span>
-          </div>
-          <div className="space-y-1 text-xs">
-            <div className="flex justify-between gap-4">
-              <span className="text-gray-400">Risk Score:</span>
-              <span className="font-bold" style={{ 
-                color: getRiskColor(calculateRiskScore(hoveredInstitution)).main 
-              }}>
-                {(calculateRiskScore(hoveredInstitution) * 100).toFixed(1)}%
-              </span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span className="text-gray-400">Risk Level:</span>
-              <span className="font-bold" style={{ 
-                color: getRiskColor(calculateRiskScore(hoveredInstitution)).main 
-              }}>
-                {getRiskColor(calculateRiskScore(hoveredInstitution)).label}
-              </span>
-            </div>
-            <div className="h-px bg-gray-700 my-2"></div>
-            <div className="flex justify-between gap-4">
-              <span className="text-gray-400">Leverage:</span>
-              <span className={`font-semibold ${
-                (hoveredInstitution.leverage || 0) > 10 ? 'text-red-400' : 
-                (hoveredInstitution.leverage || 0) > 5 ? 'text-yellow-400' : 
-                'text-green-400'
-              }`}>
-                {(hoveredInstitution.leverage || 0).toFixed(2)}x
-              </span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span className="text-gray-400">Capital Ratio:</span>
-              <span className={`font-semibold ${
-                (hoveredInstitution.capital_ratio || 0.1) < 0.08 ? 'text-red-400' : 'text-green-400'
-              }`}>
-                {((hoveredInstitution.capital_ratio || 0.1) * 100).toFixed(2)}%
-              </span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span className="text-gray-400">Liquidity:</span>
-              <span className={`font-semibold ${
-                (hoveredInstitution.liquidity_ratio || 0.2) < 0.1 ? 'text-red-400' : 'text-green-400'
-              }`}>
-                {((hoveredInstitution.liquidity_ratio || 0.2) * 100).toFixed(1)}%
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
+
     </>
   );
 };

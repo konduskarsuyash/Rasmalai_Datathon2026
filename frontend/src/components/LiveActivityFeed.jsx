@@ -52,6 +52,13 @@ const LiveActivityFeed = ({ transactions, currentStep }) => {
         icon: '💵',
         label: 'HOLD'
       },
+      'BOOK_PROFIT': {
+        bg: 'bg-emerald-100',
+        border: 'border-emerald-400',
+        text: 'text-emerald-800',
+        icon: '💰',
+        label: 'PROFIT'
+      },
     };
     return styles[action] || {
       bg: 'bg-gray-100',
@@ -88,9 +95,9 @@ const LiveActivityFeed = ({ transactions, currentStep }) => {
             const style = getActionStyle(tx.action);
             const target = tx.market_id 
               ? tx.market_id 
-              : tx.to_bank !== null 
+              : tx.to_bank !== null && tx.to_bank !== undefined
                 ? `Bank ${tx.to_bank}` 
-                : 'Internal';
+                : tx.action === 'BOOK_PROFIT' ? 'Portfolio' : 'Internal';
             
             return (
               <div
@@ -110,7 +117,7 @@ const LiveActivityFeed = ({ transactions, currentStep }) => {
                     {style.label} → {target}
                   </span>
                   <span className={`font-bold ${style.text}`}>
-                    ${tx.amount.toFixed(1)}M
+                    ${(tx.amount ?? 0).toFixed(1)}M
                   </span>
                 </div>
                 {/* Show cash impact */}

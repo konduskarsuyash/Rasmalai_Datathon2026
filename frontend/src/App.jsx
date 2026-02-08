@@ -10,6 +10,7 @@ import HeroPage from "./pages/HeroPage";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
 import FinancialNetworkPlayground from "./components/FinancialNetworkPlayground";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { UserSyncWrapper } from "./components/UserSyncWrapper";
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
@@ -40,9 +41,11 @@ function App() {
             path="/playground"
             element={
               <ProtectedRoute>
-                <div className="min-h-screen bg-gray-900">
-                  <FinancialNetworkPlayground />
-                </div>
+                <ErrorBoundary>
+                  <div className="min-h-screen bg-gray-900">
+                    <FinancialNetworkPlayground />
+                  </div>
+                </ErrorBoundary>
               </ProtectedRoute>
             }
           />

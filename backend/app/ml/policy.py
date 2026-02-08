@@ -70,8 +70,8 @@ class MLPolicy:
     def _select_action_game_theoretic(self, observation: Dict, priority_value: Optional[str],
                                      network_default_rate: float) -> BankAction:
         """
-        Game-theoretic decision using Nash equilibrium best response.
-        Uses risk_appetite to balance between market investment and interbank lending.
+        Game-theoretic decision using Nash equilibrium + Featherless AI priority.
+        Featherless priority guides the decision but doesn't block investment entirely.
         """
         import random
         
@@ -82,74 +82,116 @@ class MLPolicy:
         risk_appetite = observation.get("risk_appetite", 0.5)
         has_markets = observation.get("has_markets", True)
         local_stress = observation.get("local_stress", 0.0)
+        best_market_return = observation.get("best_market_return", 0.0)
+        best_market_position = observation.get("best_market_position", 0.0)
+        total_invested = observation.get("total_invested", 0.0)
+        
+        # === PROFIT-TAKING: If investments are profitable, actively divest to lock in gains ===
+        if total_invested > 5 and best_market_return > 0.05:
+            # Return > 5%: consider taking profits
+            # Higher returns → higher probability of profit-taking
+            profit_take_prob = min(0.80, 0.20 + best_market_return * 2.0)
+            
+            # Aggressive banks hold longer, conservative banks take profits earlier
+            if risk_appetite < 0.4:
+                profit_take_prob += 0.15  # Conservative: take profits sooner
+            elif risk_appetite > 0.7:
+                profit_take_prob -= 0.15  # Aggressive: hold for bigger gains
+            
+            # Under stress, always take profits to raise cash
+            if local_stress > 0.2:
+                profit_take_prob += 0.25
+            
+            # Low liquidity → need cash → take profits
+            if liquidity_ratio < 0.2:
+                profit_take_prob += 0.20
+            
+            profit_take_prob = max(0.10, min(0.90, profit_take_prob))
+            
+            if random.random() < profit_take_prob:
+                return BankAction.DIVEST_MARKET
         
         # Get Nash equilibrium action (LEND or HOARD)
         gt_action, reasoning = get_nash_equilibrium_action(observation, network_default_rate)
+        
+        # --- Priority adjustments from Featherless AI ---
+        # Priority influences investment probability but NEVER completely blocks it
+        priority_invest_modifier = 1.0
+        if priority_value == "PROFIT":
+            priority_invest_modifier = 1.3  # Boost investment
+        elif priority_value == "LIQUIDITY":
+            priority_invest_modifier = 0.5  # Reduce but still allow
+        elif priority_value == "STABILITY":
+            priority_invest_modifier = 0.3  # Significantly reduce but still possible
         
         # Map game theory action to bank actions
         if gt_action.value == "LEND":
             # Nash equilibrium says LEND — deploy capital productively
             
-            # Emergency: too little cash to do anything useful
-            if cash < 15 or liquidity_ratio < 0.1:
+            # Emergency: genuinely no cash
+            if cash < 10 or equity < 5:
                 return BankAction.HOARD_CASH
             
-            # Decide between INVEST_MARKET vs INCREASE_LENDING using risk_appetite
-            # High risk_appetite (>0.5) → prefer market investment (higher potential returns)
-            # Low risk_appetite (<0.5) → prefer interbank lending (stable interest income)
-            
-            if has_markets and cash > 20:
-                # Investment probability scales with risk_appetite
-                # risk_appetite=0.0 → 15% chance to invest (conservative banks still diversify a bit)
-                # risk_appetite=0.5 → 50% chance to invest
-                # risk_appetite=1.0 → 85% chance to invest (aggressive banks love markets)
-                invest_prob = 0.15 + (risk_appetite * 0.70)
+            if has_markets and cash > 15:
+                # Base investment probability from risk_appetite
+                invest_prob = 0.20 + (risk_appetite * 0.65)
                 
-                # Reduce invest probability if already heavily exposed to markets
-                # Allow up to 50% market exposure (was 20% before — way too restrictive)
+                # Apply Featherless AI priority modifier
+                invest_prob *= priority_invest_modifier
+                
+                # Reduce if heavily exposed already
                 if market_exposure > 0.5:
-                    invest_prob *= 0.2  # Heavily reduce but don't eliminate
+                    invest_prob *= 0.15
                 elif market_exposure > 0.35:
-                    invest_prob *= 0.5  # Moderate reduction
+                    invest_prob *= 0.4
                 
-                # Increase invest probability if cash is plentiful (put money to work)
+                # Boost if lots of idle cash (bank should deploy capital)
                 if liquidity_ratio > 0.6:
-                    invest_prob = min(0.95, invest_prob * 1.3)
+                    invest_prob = min(0.95, invest_prob * 1.4)
+                elif liquidity_ratio > 0.4:
+                    invest_prob = min(0.90, invest_prob * 1.2)
                 
-                # Under stress, reduce market appetite
+                # Stress reduces appetite
                 if local_stress > 0.3:
-                    invest_prob *= 0.5
+                    invest_prob *= 0.4
+                
+                # Clamp
+                invest_prob = max(0.05, min(0.95, invest_prob))
                 
                 if random.random() < invest_prob:
                     return BankAction.INVEST_MARKET
                 else:
-                    if cash > 20:
+                    if cash > 15:
                         return BankAction.INCREASE_LENDING
                     return BankAction.HOARD_CASH
             
-            elif cash > 20:
-                # No markets available — lend to other banks
+            elif cash > 15:
                 return BankAction.INCREASE_LENDING
             else:
                 return BankAction.HOARD_CASH
         
         else:  # gt_action == HOARD
-            # Nash equilibrium says HOARD — preserve capital
-            # Liquidate positions and pull back
-            if market_exposure > 0.1 and random.random() < 0.6:
-                return BankAction.DIVEST_MARKET  # Exit market positions
+            # Nash says HOARD — but even in hoarding, allow some investment
+            # if the bank is flush with cash and markets are up
+            if has_markets and cash > 40 and liquidity_ratio > 0.5 and risk_appetite > 0.6:
+                # Aggressive banks may still invest even when Nash says hoard
+                if random.random() < 0.3 * priority_invest_modifier:
+                    return BankAction.INVEST_MARKET
+            
+            if market_exposure > 0.1 and random.random() < 0.5:
+                return BankAction.DIVEST_MARKET
             elif liquidity_ratio < 0.25:
-                return BankAction.DECREASE_LENDING  # Recall loans
+                return BankAction.DECREASE_LENDING
             else:
                 return BankAction.HOARD_CASH
     
     def _select_action_heuristic(self, observation: Dict, priority_value: Optional[str]) -> BankAction:
         """
-        Heuristic-based decision making with risk_appetite-driven market investment.
+        Heuristic-based decision making with Featherless AI priority and risk_appetite.
+        Priority guides but never fully blocks investment when markets exist.
         """
         import random
         
-        bank_id = observation.get("bank_id", 0)
         cash = observation.get("cash", 100)
         equity = observation.get("equity", 50)
         leverage = observation.get("leverage", 1.0)
@@ -158,58 +200,83 @@ class MLPolicy:
         risk_appetite = observation.get("risk_appetite", 0.5)
         has_markets = observation.get("has_markets", True)
         local_stress = observation.get("local_stress", 0.0)
-
-        # Priority-based strategies (override normal logic)
-        if priority_value == "LIQUIDITY":
-            if cash < 30 or liquidity_ratio < 0.2:
-                if market_exposure > 0.05:
-                    return BankAction.DIVEST_MARKET
-                return BankAction.DECREASE_LENDING
-            return BankAction.HOARD_CASH
+        best_market_return = observation.get("best_market_return", 0.0)
+        best_market_position = observation.get("best_market_position", 0.0)
+        total_invested = observation.get("total_invested", 0.0)
+        
+        # Priority invest modifier from Featherless AI
+        priority_invest_modifier = 1.0
+        if priority_value == "PROFIT":
+            priority_invest_modifier = 1.3
+        elif priority_value == "LIQUIDITY":
+            priority_invest_modifier = 0.4
+        elif priority_value == "STABILITY":
+            priority_invest_modifier = 0.25
+        
+        # === PROFIT-TAKING: Sell investments when they're profitable ===
+        if total_invested > 5 and best_market_return > 0.03:
+            # Heuristic mode uses a lower threshold (3%) for profit-taking
+            profit_take_prob = min(0.75, 0.15 + best_market_return * 2.5)
             
-        if priority_value == "STABILITY":
-            if leverage > 2.5:
-                return BankAction.DECREASE_LENDING
-            if market_exposure > 0.3:
+            # Priority influences profit-taking
+            if priority_value == "PROFIT":
+                # PROFIT priority: take profits aggressively when return is good
+                profit_take_prob += 0.15
+            elif priority_value == "LIQUIDITY":
+                # LIQUIDITY: always want cash, take profits eagerly
+                profit_take_prob += 0.25
+            
+            if risk_appetite < 0.4:
+                profit_take_prob += 0.10
+            
+            if local_stress > 0.2:
+                profit_take_prob += 0.20
+            
+            if liquidity_ratio < 0.25:
+                profit_take_prob += 0.20
+            
+            profit_take_prob = max(0.10, min(0.85, profit_take_prob))
+            
+            if random.random() < profit_take_prob:
                 return BankAction.DIVEST_MARKET
-            return BankAction.HOARD_CASH
 
-        # === Emergency liquidation ===
-        if cash < 15 or liquidity_ratio < 0.12:
+        # === Genuine emergency ===
+        if cash < 10 or equity < 5:
             if market_exposure > 0.03:
                 return BankAction.DIVEST_MARKET
             return BankAction.DECREASE_LENDING
         
-        # === Stress response ===
-        if local_stress > 0.4:
+        # === Severe stress ===
+        if local_stress > 0.5 and liquidity_ratio < 0.2:
             if market_exposure > 0.1:
                 return BankAction.DIVEST_MARKET
-            if liquidity_ratio < 0.25:
-                return BankAction.DECREASE_LENDING
-            return BankAction.HOARD_CASH
-            
-        if equity < 20:
-            return BankAction.HOARD_CASH
+            return BankAction.DECREASE_LENDING
         
-        # === Productive capital deployment ===
-        # Banks with cash should PUT IT TO WORK — either invest or lend
-        # The split is driven by risk_appetite:
-        #   high risk → markets (higher returns, higher risk)
-        #   low risk → interbank lending (stable interest income)
-        
-        if cash > 25:
-            if has_markets and market_exposure < 0.5:
-                # Probability of investing vs lending based on risk appetite
-                invest_prob = 0.2 + (risk_appetite * 0.6)
+        # === Capital deployment — the core logic ===
+        if cash > 15:
+            if has_markets and market_exposure < 0.55:
+                # Base probability from risk appetite
+                invest_prob = 0.25 + (risk_appetite * 0.55)
                 
-                # Banks with lots of idle cash should be more aggressive
+                # Apply Featherless AI priority
+                invest_prob *= priority_invest_modifier
+                
+                # Lots of idle cash → invest more aggressively
                 if cash > 60:
-                    invest_prob = min(0.9, invest_prob + 0.15)
+                    invest_prob = min(0.95, invest_prob + 0.2)
+                elif cash > 35:
+                    invest_prob = min(0.90, invest_prob + 0.1)
+                
+                # Stress adjustment
+                if local_stress > 0.3:
+                    invest_prob *= 0.5
+                
+                invest_prob = max(0.05, min(0.95, invest_prob))
                 
                 if random.random() < invest_prob:
                     return BankAction.INVEST_MARKET
             
-            # Fall through to lending
+            # Not investing → lend to other banks
             return BankAction.INCREASE_LENDING
         
         return BankAction.HOARD_CASH

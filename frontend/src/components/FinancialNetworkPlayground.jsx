@@ -23,7 +23,6 @@ import MarketDashboard from "./MarketDashboard";
 import LiveActivityFeed from "./LiveActivityFeed";
 import CascadeVisualization from "./CascadeVisualization";
 import CascadePlayer from "./CascadePlayer";
-import RiskLegend from "./RiskLegend";
 import HistoricalTrendsChart from "./HistoricalTrendsChart";
 
 const FinancialNetworkPlayground = () => {
@@ -147,9 +146,6 @@ const FinancialNetworkPlayground = () => {
   const [cascadePlayerActive, setCascadePlayerActive] = useState(false);
   const [showCascadePanel, setShowCascadePanel] = useState(false);
 
-  // Risk heatmap state
-  const [showRiskHeatmap, setShowRiskHeatmap] = useState(false);
-  
   // Historical trends state
   const [showTrendsPanel, setShowTrendsPanel] = useState(false);
   const [selectedBanksForComparison, setSelectedBanksForComparison] = useState([]);
@@ -321,10 +317,11 @@ const FinancialNetworkPlayground = () => {
   };
 
   const updateMetrics = () => {
+    if (institutions.length === 0) return;
     const avgRisk =
-      institutions.reduce((sum, i) => sum + i.risk, 0) / institutions.length;
+      institutions.reduce((sum, i) => sum + (i.risk || 0), 0) / institutions.length;
     const avgLiquidity =
-      institutions.reduce((sum, i) => sum + i.liquidity, 0) /
+      institutions.reduce((sum, i) => sum + (i.liquidity || 0), 0) /
       institutions.length;
     const totalCapital = institutions.reduce((sum, i) => sum + i.capital, 0);
 
@@ -512,16 +509,47 @@ const FinancialNetworkPlayground = () => {
   };
 
   const handleTransactionEvent = (event) => {
+    try {
+    if (!event || !event.type) {
+      console.warn("[FinancialNetworkPlayground] Received invalid event:", event);
+      return;
+    }
     console.log("[FinancialNetworkPlayground] Received event:", event.type);
 
     if (event.type === "init") {
       // Initialize connections from backend
-      setRealtimeConnections(event.connections);
+      setRealtimeConnections(event.connections || []);
       // Reset historical data when simulation starts
       setHistoricalData([]);
       setAllTransactions([]);
       setCurrentSimulationStep(0);
       setIsSimulationRunning(true);
+
+      // Add backend-created market nodes to the canvas if they don't exist yet
+      if (event.markets && event.markets.length > 0) {
+        setInstitutions(prev => {
+          const existingIds = new Set(prev.map(i => i.id));
+          const newMarkets = event.markets
+            .filter(m => !existingIds.has(m.id))
+            .map((m, idx) => ({
+              id: m.id,
+              type: 'market',
+              name: m.name || m.id,
+              position: { x: 450 + idx * 150, y: 80 + idx * 60 },
+              capital: 0,
+              target: 1.0,
+              risk: 0.0,
+              isMarket: true,
+              price: m.price || 100,
+              totalInvested: m.total_invested || 0,
+            }));
+          if (newMarkets.length > 0) {
+            console.log('[FinancialNetworkPlayground] Adding', newMarkets.length, 'backend-created markets to canvas:', newMarkets.map(m => m.id));
+            return [...prev, ...newMarkets];
+          }
+          return prev;
+        });
+      }
 
       // Store initial state with market data
       if (event.markets && event.markets.length > 0) {
@@ -597,7 +625,7 @@ const FinancialNetworkPlayground = () => {
       // Log varying amounts to show dynamic behavior
       if (event.step < 2) {
         console.log(
-          `[Transaction] Bank ${event.from_bank}: ${event.action} $${event.amount.toFixed(1)}M`,
+          `[Transaction] Bank ${event.from_bank}: ${event.action} $${(event.amount ?? 0).toFixed(1)}M`,
         );
       }
 
@@ -748,36 +776,96 @@ const FinancialNetworkPlayground = () => {
       });
     } else if (event.type === "market_gain") {
       // Bank realized gain/loss from market divestment
-      const gainLoss = event.realized_gain >= 0 ? "gain" : "loss";
-      const absGain = Math.abs(event.realized_gain);
+      const realizedGain = event.realized_gain ?? 0;
+      const marketReturn = event.market_return ?? 0;
+      const gainLoss = realizedGain >= 0 ? "gain" : "loss";
+      const absGain = Math.abs(realizedGain);
 
       addAlert({
-        type: event.realized_gain >= 0 ? "success" : "warning",
+        type: realizedGain >= 0 ? "success" : "warning",
         institution: `Bank ${event.bank_id}`,
-        message: `Realized ${event.realized_gain >= 0 ? "📈" : "📉"} $${absGain.toFixed(1)}M ${gainLoss} (${event.market_return.toFixed(1)}% return) from ${event.market_id}`,
+        message: `Realized ${realizedGain >= 0 ? "📈" : "📉"} $${absGain.toFixed(1)}M ${gainLoss} (${marketReturn.toFixed(1)}% return) from ${event.market_id}`,
         severity: absGain > 10 ? "high" : "medium",
       });
 
       console.log(
-        `[Market Gain] Bank ${event.bank_id}: $${event.realized_gain.toFixed(1)}M ${gainLoss} from ${event.market_id}`,
+        `[Market Gain] Bank ${event.bank_id}: $${realizedGain.toFixed(1)}M ${gainLoss} from ${event.market_id}`,
+      );
+    } else if (event.type === "profit_booking") {
+      // Bank booked profit from market investments (mark-to-market)
+      const profit = event.profit ?? 0;
+      const bankId = event.bank_id;
+      const isGain = profit >= 0;
+      const absProfit = Math.abs(profit);
+      
+      // Add to allTransactions for activity feed
+      setAllTransactions((prev) => [
+        ...prev,
+        {
+          step: event.step,
+          from_bank: bankId,
+          to_bank: null,
+          market_id: null,
+          action: "BOOK_PROFIT",
+          amount: absProfit,
+          reason: `${isGain ? 'Profit' : 'Loss'}: $${absProfit.toFixed(1)}M from investments`,
+        },
+      ]);
+      
+      // Add active transaction for canvas visualization (pulsing effect at bank)
+      const txId = `profit-${event.step}-${bankId}-${Date.now()}`;
+      setActiveTransactions((prev) => [
+        ...prev,
+        {
+          id: txId,
+          from: bankId,
+          to: null,          // No target — shows pulsing at source
+          targetType: "self",
+          amount: absProfit,
+          action: "BOOK_PROFIT",
+          profit: profit,
+        },
+      ]);
+      
+      // Remove after animation
+      setTimeout(() => {
+        setActiveTransactions((prev) => prev.filter((tx) => tx.id !== txId));
+      }, 3500);
+      
+      // Show alert for significant profit bookings
+      if (absProfit > 1.0) {
+        addAlert({
+          type: isGain ? "success" : "warning",
+          institution: `Bank ${bankId}`,
+          message: `${isGain ? '💰' : '📉'} Booked $${absProfit.toFixed(1)}M ${isGain ? 'profit' : 'loss'} from investments`,
+          severity: absProfit > 5 ? "high" : "medium",
+        });
+      }
+      
+      console.log(
+        `[Profit Booking] Bank ${bankId}: ${isGain ? '+' : '-'}$${absProfit.toFixed(1)}M`,
       );
     } else if (event.type === "market_movement") {
       // Market price fluctuation
-      const direction = event.change_pct >= 0 ? "⬆️" : "⬇️";
+      const changePct = event.change_pct ?? 0;
+      const direction = changePct >= 0 ? "⬆️" : "⬇️";
 
       addAlert({
-        type: event.change_pct >= 0 ? "success" : "warning",
+        type: changePct >= 0 ? "success" : "warning",
         institution: event.market_id,
-        message: `${direction} Price moved ${event.change_pct >= 0 ? "+" : ""}${event.change_pct.toFixed(1)}%: $${event.old_price} → $${event.new_price}`,
-        severity: Math.abs(event.change_pct) > 5 ? "high" : "medium",
+        message: `${direction} Price moved ${changePct >= 0 ? "+" : ""}${changePct.toFixed(1)}%: $${event.old_price ?? '?'} → $${event.new_price ?? '?'}`,
+        severity: Math.abs(changePct) > 5 ? "high" : "medium",
       });
 
       console.log(
-        `[Market Movement] ${event.market_id}: ${event.change_pct.toFixed(1)}% ($${event.old_price} → $${event.new_price})`,
+        `[Market Movement] ${event.market_id}: ${(event.change_pct ?? 0).toFixed(1)}% ($${event.old_price ?? '?'} → $${event.new_price ?? '?'})`,
       );
     } else if (event.type === "complete") {
       setIsSimulationRunning(false);
       console.log("[FinancialNetworkPlayground] Simulation completed");
+    }
+    } catch (err) {
+      console.error('[FinancialNetworkPlayground] Error handling event:', event?.type, err);
     }
   };
 
@@ -786,7 +874,7 @@ const FinancialNetworkPlayground = () => {
     addAlert({
       type: "critical",
       institution: `Bank ${event.bank_id}`,
-      message: `Bank has defaulted (equity: $${event.equity.toFixed(2)}M)`,
+      message: `Bank has defaulted (equity: $${(event.equity ?? 0).toFixed(2)}M)`,
       severity: "high",
     });
   };
@@ -938,7 +1026,6 @@ const FinancialNetworkPlayground = () => {
             realtimeConnections={realtimeConnections}
             cascadingBanks={cascadingBanks}
             cascadeTrigger={cascadeTrigger}
-            showRiskHeatmap={showRiskHeatmap}
           />
 
           {/* Connection Hint - Bottom Left */}
@@ -948,14 +1035,6 @@ const FinancialNetworkPlayground = () => {
               Ctrl
             </kbd>{" "}
             + drag to connect nodes
-          </div>
-
-          {/* Risk Heatmap Legend - Top Left */}
-          <div className="absolute top-24 left-6 z-40">
-            <RiskLegend 
-              showHeatmap={showRiskHeatmap}
-              onToggle={() => setShowRiskHeatmap(!showRiskHeatmap)}
-            />
           </div>
 
           {/* Historical Trends Button - Top Right */}
@@ -1289,14 +1368,17 @@ const FinancialNetworkPlayground = () => {
             : null;
         })()}
 
-      {activeDashboard && activeDashboard.type === "market" && (
-        <MarketDashboard
-          market={institutions.find((i) => i.id === activeDashboard.id)}
-          historicalData={historicalData}
-          transactions={allTransactions}
-          onClose={closeDashboard}
-        />
-      )}
+      {activeDashboard && activeDashboard.type === "market" && (() => {
+        const market = institutions.find((i) => i.id === activeDashboard.id);
+        return market ? (
+          <MarketDashboard
+            market={market}
+            historicalData={historicalData}
+            transactions={allTransactions}
+            onClose={closeDashboard}
+          />
+        ) : null;
+      })()}
     </div>
   );
 };

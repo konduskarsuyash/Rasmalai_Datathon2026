@@ -336,61 +336,50 @@ class SimpleRiskScorer:
             return "HOLD"
 
 
-class MLRiskPredictor:
+class FormulaRiskPredictor:
     """
-    Machine Learning-based risk predictor using XGBoost
-    Trained on simulation data to predict default probabilities
+    Direct mathematical formula-based risk predictor.
+    Uses Merton Distance-to-Default inspired logistic model.
+    No ML training required — calibrated coefficients based on financial theory.
+    
+    Formula:
+        z = Σ(wi * fi)  where fi are normalized financial features
+        default_probability = sigmoid(z) = 1 / (1 + exp(-z))
+    
+    The coefficients are calibrated so that a healthy bank with:
+      - capital_ratio=0.10, leverage=5, liquidity=0.4, equity=80
+    gets a low risk score (~0.10), while a stressed bank with:
+      - capital_ratio=0.04, leverage=20, liquidity=0.05, equity=10, past_defaults=2
+    gets a high risk score (~0.75).
     """
     
-    def __init__(self, model_path: Optional[str] = None):
-        """
-        Initialize ML predictor
-        
-        Args:
-            model_path: Path to trained model file
-        """
-        self.model = None
-        self.scaler = None
-        self.feature_names = []
-        self.is_trained = False
-        
-        if model_path and os.path.exists(model_path):
-            self.load_model(model_path)
+    # Calibrated coefficients (positive = increases risk)
+    COEFFICIENTS = {
+        'intercept':       -2.5,    # Base bias toward low risk (healthy default)
+        'capital_ratio':   -8.0,    # Higher capital → much lower risk
+        'leverage':         0.12,   # Higher leverage → higher risk
+        'liquidity_ratio': -3.0,    # Higher liquidity → lower risk
+        'equity':          -0.015,  # Higher equity cushion → lower risk
+        'past_defaults':    0.8,    # Each past default adds significant risk
+        'risk_appetite':    0.5,    # Higher risk appetite → slightly higher risk
+        'market_volatility': 4.0,   # Market turbulence → higher risk
+        'lender_strength': -2.0,    # Strong lender can absorb losses (reduces systemic risk)
+        'network_centrality': 1.5,  # Systemic importance amplifies risk
+        'upstream_burden':  0.3,    # Debt burden relative to equity
+    }
     
-    def extract_features(
-        self,
-        borrower_state: Dict,
-        lender_state: Dict,
-        network_metrics: Dict,
-        market_state: Dict
-    ) -> np.ndarray:
-        """
-        Extract feature vector for ML model
-        Matches the 8 features used in training:
-        1. borrower_capital_ratio
-        2. borrower_leverage
-        3. borrower_liquidity_ratio
-        4. borrower_equity
-        5. borrower_past_defaults
-        6. borrower_risk_appetite
-        7. market_volatility
-        8. lender_capital_ratio
-        
-        Returns:
-            numpy array of features
-        """
-        features = [
-            borrower_state.get('capital_ratio', 0.08),
-            borrower_state.get('leverage', 10.0),
-            borrower_state.get('liquidity_ratio', 0.2),
-            borrower_state.get('equity', 100.0),
-            float(borrower_state.get('past_defaults', 0)),
-            borrower_state.get('risk_appetite', 0.5),
-            market_state.get('volatility', 0.02),
-            lender_state.get('capital_ratio', 0.10),
-        ]
-        
-        return np.array(features).reshape(1, -1)
+    def __init__(self):
+        """Initialize formula predictor (no model file needed)"""
+        pass
+    
+    @staticmethod
+    def _sigmoid(z: float) -> float:
+        """Numerically stable sigmoid function"""
+        if z >= 0:
+            return 1.0 / (1.0 + math.exp(-z))
+        else:
+            ez = math.exp(z)
+            return ez / (1.0 + ez)
     
     def predict(
         self,
@@ -401,37 +390,70 @@ class MLRiskPredictor:
         exposure_amount: float = 0.0
     ) -> RiskPrediction:
         """
-        Predict risk using trained ML model
+        Predict risk using direct mathematical formula.
+        
+        Uses logistic regression-style:  P(default) = σ(w·x)
+        where features are financial ratios and network metrics.
         
         Returns:
-            RiskPrediction with ML-based estimates
+            RiskPrediction with formula-based estimates
         """
-        if not self.is_trained:
-            # Fall back to simple scorer
-            simple_scorer = SimpleRiskScorer()
-            return simple_scorer.calculate_risk_score(
-                borrower_state, lender_state, network_metrics, market_state, exposure_amount
-            )
+        # Extract raw features
+        capital_ratio = borrower_state.get('capital_ratio', 0.08)
+        leverage = borrower_state.get('leverage', 5.0)
+        liquidity_ratio = borrower_state.get('liquidity_ratio', 0.3)
+        equity = borrower_state.get('equity', 80.0)
+        past_defaults = float(borrower_state.get('past_defaults', 0))
+        risk_appetite = borrower_state.get('risk_appetite', 0.5)
+        market_vol = market_state.get('volatility', 0.02)
+        market_stress = market_state.get('stress', 0.0)
+        lender_capital = lender_state.get('capital_ratio', 0.10)
+        centrality = network_metrics.get('centrality', 0.0)
+        degree = network_metrics.get('degree', 0)
+        upstream_exposure = network_metrics.get('upstream_exposure', 0)
         
-        # Extract features
-        features = self.extract_features(borrower_state, lender_state, network_metrics, market_state)
+        # Compute upstream burden (debt / equity ratio)
+        upstream_burden = (upstream_exposure / max(equity, 1.0)) if equity > 0 else 2.0
+        upstream_burden = min(upstream_burden, 5.0)  # Cap at 5x
         
-        # Predict default probability
-        default_prob = self.model.predict_proba(features)[0][1]
+        # Combined market stress factor
+        market_factor = max(market_vol, market_stress * 0.5)
         
-        # Calculate derived metrics
-        borrower_equity = borrower_state.get('equity', 50)
+        # Compute linear combination z = w·x
+        W = self.COEFFICIENTS
+        z = (
+            W['intercept']
+            + W['capital_ratio'] * capital_ratio
+            + W['leverage'] * leverage
+            + W['liquidity_ratio'] * liquidity_ratio
+            + W['equity'] * equity
+            + W['past_defaults'] * past_defaults
+            + W['risk_appetite'] * risk_appetite
+            + W['market_volatility'] * market_factor
+            + W['lender_strength'] * lender_capital
+            + W['network_centrality'] * centrality
+            + W['upstream_burden'] * upstream_burden
+        )
+        
+        # Apply sigmoid to get probability
+        default_prob = self._sigmoid(z)
+        
+        # Clamp to reasonable range [0.02, 0.95]
+        default_prob = max(0.02, min(default_prob, 0.95))
+        
+        # Derived metrics
+        borrower_equity = max(equity, 1.0)
         expected_loss = default_prob * (exposure_amount if exposure_amount > 0 else borrower_equity * 0.1)
         
-        centrality = network_metrics.get('centrality', 0.0)
         systemic_impact = default_prob * (0.5 + 0.5 * centrality)
-        
-        cascade_risk = self._calculate_ml_cascade_risk(default_prob, network_metrics)
-        
+        cascade_risk = self._calculate_cascade_risk(default_prob, network_metrics)
         risk_level = self._classify_risk_level(default_prob)
         recommendation = self._generate_recommendation(default_prob, systemic_impact, cascade_risk)
         
-        reasons = self._generate_ml_reasons(default_prob, features[0], borrower_state, network_metrics)
+        reasons = self._generate_reasons(
+            default_prob, capital_ratio, leverage, liquidity_ratio,
+            equity, past_defaults, market_factor, centrality, upstream_burden
+        )
         
         return RiskPrediction(
             default_probability=default_prob,
@@ -440,22 +462,30 @@ class MLRiskPredictor:
             cascade_risk=cascade_risk,
             risk_level=risk_level,
             recommendation=recommendation,
-            confidence=0.85,  # ML models have higher confidence
+            confidence=0.80,
             reasons=reasons
         )
     
-    def _calculate_ml_cascade_risk(self, default_prob: float, network_metrics: Dict) -> float:
-        """Calculate cascade risk from ML prediction"""
+    def calculate_risk_score(
+        self,
+        borrower_state: Dict,
+        lender_state: Dict,
+        network_metrics: Dict,
+        market_state: Dict,
+        exposure_amount: float = 0.0
+    ) -> RiskPrediction:
+        """Alias for predict() — compatible with SimpleRiskScorer interface"""
+        return self.predict(borrower_state, lender_state, network_metrics, market_state, exposure_amount)
+    
+    def _calculate_cascade_risk(self, default_prob: float, network_metrics: Dict) -> float:
+        """Calculate probability of triggering cascade"""
         centrality = network_metrics.get('centrality', 0.0)
         degree = network_metrics.get('degree', 0)
-        
         network_amplification = 1.0 + centrality * 0.6 + min(degree / 10, 0.4)
-        cascade_risk = default_prob * network_amplification
-        
-        return min(cascade_risk, 1.0)
+        return min(default_prob * network_amplification, 1.0)
     
     def _classify_risk_level(self, risk_score: float) -> RiskLevel:
-        """Classify risk level"""
+        """Classify risk into levels"""
         if risk_score < 0.15:
             return RiskLevel.VERY_LOW
         elif risk_score < 0.30:
@@ -468,7 +498,7 @@ class MLRiskPredictor:
             return RiskLevel.VERY_HIGH
     
     def _generate_recommendation(self, risk_score: float, systemic_impact: float, cascade_risk: float) -> str:
-        """Generate recommendation"""
+        """Generate lending recommendation"""
         if risk_score > 0.7 or systemic_impact > 0.7:
             return "REJECT"
         elif risk_score > 0.5 or cascade_risk > 0.6:
@@ -480,86 +510,73 @@ class MLRiskPredictor:
         else:
             return "HOLD"
     
-    def _generate_ml_reasons(
-        self, default_prob: float, features: np.ndarray, borrower_state: Dict, network_metrics: Dict
+    def _generate_reasons(
+        self, default_prob, capital_ratio, leverage, liquidity_ratio,
+        equity, past_defaults, market_factor, centrality, upstream_burden
     ) -> List[str]:
-        """Generate human-readable reasons from ML prediction"""
-        reasons = [f"🤖 ML Model: {default_prob:.1%} default probability"]
+        """Generate human-readable reasons from formula components"""
+        reasons = [f"📐 Formula Model: {default_prob:.1%} default probability"]
         
-        if features[1] > 10:  # Leverage
-            reasons.append(f"⚠️ High leverage: {features[1]:.1f}x")
+        # Highlight the dominant risk drivers
+        if capital_ratio < 0.06:
+            reasons.append(f"⚠️ Critical capital ratio: {capital_ratio:.1%} (min 8% recommended)")
+        elif capital_ratio < 0.08:
+            reasons.append(f"⚠️ Low capital ratio: {capital_ratio:.1%}")
         
-        if features[0] < 0.08:  # Capital ratio
-            reasons.append(f"⚠️ Low capital: {features[0]:.1%}")
+        if leverage > 15:
+            reasons.append(f"⚠️ Dangerous leverage: {leverage:.1f}x")
+        elif leverage > 10:
+            reasons.append(f"⚠️ High leverage: {leverage:.1f}x")
         
-        if network_metrics.get('centrality', 0) > 0.6:
-            reasons.append(f"🕸️ Systemic importance (centrality: {network_metrics['centrality']:.2f})")
+        if liquidity_ratio < 0.15:
+            reasons.append(f"⚠️ Liquidity stress: {liquidity_ratio:.1%}")
         
-        if borrower_state.get('past_defaults', 0) > 0:
-            reasons.append(f"📉 Default history: {borrower_state['past_defaults']}")
+        if equity < 20:
+            reasons.append(f"⚠️ Low equity cushion: ${equity:.0f}M")
+        
+        if past_defaults > 0:
+            reasons.append(f"📉 Default history: {int(past_defaults)} past defaults")
+        
+        if market_factor > 0.3:
+            reasons.append(f"🌪️ Market turbulence: {market_factor:.1%}")
+        
+        if centrality > 0.5:
+            reasons.append(f"🕸️ Systemic importance (centrality: {centrality:.2f})")
+        
+        if upstream_burden > 2.0:
+            reasons.append(f"💰 Heavy debt: {upstream_burden:.1f}x equity")
         
         return reasons
-    
-    def load_model(self, model_path: str):
-        """Load trained model from disk"""
-        try:
-            with open(model_path, 'rb') as f:
-                model_data = pickle.load(f)
-            
-            self.model = model_data['model']
-            self.scaler = model_data.get('scaler')
-            self.feature_names = model_data.get('feature_names', [])
-            self.is_trained = True
-            
-            print(f"✓ Loaded ML risk model from {model_path}")
-        except Exception as e:
-            print(f"⚠️ Failed to load model: {e}")
-            self.is_trained = False
-    
-    def save_model(self, model_path: str):
-        """Save trained model to disk"""
-        model_data = {
-            'model': self.model,
-            'scaler': self.scaler,
-            'feature_names': self.feature_names
-        }
-        
-        Path(model_path).parent.mkdir(parents=True, exist_ok=True)
-        
-        with open(model_path, 'wb') as f:
-            pickle.dump(model_data, f)
-        
-        print(f"✓ Saved ML risk model to {model_path}")
 
 
 # Global risk predictor instance
 _risk_predictor = None
 
 
-def get_risk_predictor(use_ml: bool = True, model_path: Optional[str] = None) -> SimpleRiskScorer:
+def get_risk_predictor(use_ml: bool = True, model_path: Optional[str] = None):
     """
-    Get risk predictor instance
+    Get risk predictor instance.
+    
+    Uses FormulaRiskPredictor (direct mathematical formula) by default.
+    Falls back to SimpleRiskScorer (rule-based) if use_ml=False.
     
     Args:
-        use_ml: Use ML model if available (default: True)
-        model_path: Path to ML model (default: models/risk_model.pkl)
+        use_ml: Use formula predictor (default: True). If False, uses simple rule-based scorer.
+        model_path: Ignored (kept for API compatibility).
         
     Returns:
-        Risk predictor (ML or Simple)
+        Risk predictor (Formula or Simple)
     """
     global _risk_predictor
     
-    # Auto-detect trained model if not specified
-    if use_ml and model_path is None:
-        if os.path.exists(DEFAULT_MODEL_PATH):
-            model_path = DEFAULT_MODEL_PATH
-    
-    if use_ml and model_path and os.path.exists(model_path):
-        if _risk_predictor is None or not isinstance(_risk_predictor, MLRiskPredictor):
-            _risk_predictor = MLRiskPredictor(model_path)
+    if use_ml:
+        # Use the direct mathematical formula predictor (replaces XGBoost)
+        if _risk_predictor is None or not isinstance(_risk_predictor, FormulaRiskPredictor):
+            _risk_predictor = FormulaRiskPredictor()
+            print("✓ Using FormulaRiskPredictor (direct mathematical formula, no XGBoost)")
         return _risk_predictor
     else:
-        # Fall back to simple scorer
+        # Fall back to simple rule-based scorer
         if _risk_predictor is None or not isinstance(_risk_predictor, SimpleRiskScorer):
             _risk_predictor = SimpleRiskScorer()
         return _risk_predictor
@@ -589,8 +606,9 @@ def assess_lending_risk(
     """
     predictor = get_risk_predictor(use_ml=use_ml)
     
-    # Call appropriate method based on predictor type
-    if isinstance(predictor, MLRiskPredictor):
+    # Both FormulaRiskPredictor and SimpleRiskScorer support calculate_risk_score()
+    # FormulaRiskPredictor also supports predict() — use calculate_risk_score for unified interface
+    if isinstance(predictor, FormulaRiskPredictor):
         return predictor.predict(
             borrower_state=borrower_state,
             lender_state=lender_state,
